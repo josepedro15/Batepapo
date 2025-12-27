@@ -90,6 +90,10 @@ export async function createUserAccount(formData: FormData) {
         return { error: 'Apenas gestores podem criar usuários.' }
     }
 
+    if (!adminAuthClient) {
+        return { error: 'Configuração do servidor incompleta. Contate o administrador.' }
+    }
+
     // 2. Create User via Admin API
     const { data: newUser, error: createError } = await adminAuthClient.auth.admin.createUser({
         email,
@@ -236,8 +240,12 @@ export async function updateUserAccount(formData: FormData) {
         return { error: 'Apenas gestores podem editar usuários.' }
     }
 
+    if (!adminAuthClient) {
+        return { error: 'Configuração do servidor incompleta. Contate o administrador.' }
+    }
+
     // 2. Update Auth Metadata (Name & Password) via Admin API
-    const updateData: any = {
+    const updateData: { user_metadata: { full_name: string }; password?: string } = {
         user_metadata: { full_name: name }
     }
     if (password && password.trim().length >= 6) {
