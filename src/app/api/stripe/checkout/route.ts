@@ -3,6 +3,14 @@ import { stripe, PRICES, PlanType } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
+    // Check if Stripe is configured
+    if (!process.env.STRIPE_SECRET_KEY) {
+        return NextResponse.json(
+            { error: 'Stripe integration not configured' },
+            { status: 503 }
+        )
+    }
+
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()

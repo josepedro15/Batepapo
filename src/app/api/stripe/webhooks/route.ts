@@ -7,6 +7,14 @@ import Stripe from 'stripe'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+    // Check if Stripe and Supabase Admin are configured
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !adminAuthClient) {
+        return NextResponse.json(
+            { error: 'Stripe integration not configured' },
+            { status: 503 }
+        )
+    }
+
     const body = await request.text()
     const signature = request.headers.get('stripe-signature')
 
@@ -78,6 +86,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+    if (!adminAuthClient) return
+
     const userId = session.metadata?.supabase_user_id
     if (!userId) return
 
@@ -133,6 +143,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function upsertSubscription(subscription: Stripe.Subscription) {
+    if (!adminAuthClient) return
+
     const userId = subscription.metadata?.supabase_user_id
     if (!userId) return
 
@@ -168,6 +180,8 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
 }
 
 async function deleteSubscription(subscriptionId: string) {
+    if (!adminAuthClient) return
+
     await adminAuthClient
         .from('subscriptions')
         .update({ status: 'canceled' })
