@@ -1,0 +1,89 @@
+'use client'
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+    LayoutDashboard,
+    MessageSquare,
+    Megaphone,
+    Settings,
+    Users,
+    LogOut
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { OrgSwitcher } from "./org-switcher"
+import { logout } from "@/app/dashboard/logout-action"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
+
+const navigation = [
+    { name: "Kanban", href: "/dashboard/kanban", icon: LayoutDashboard },
+    { name: "Chat", href: "/dashboard/chat", icon: MessageSquare },
+    { name: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
+    { name: "Contatos", href: "/dashboard/contacts", icon: Users },
+    { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+]
+
+export function SidebarClient({ organizations, currentOrgId }: { organizations: any[], currentOrgId: string }) {
+    const pathname = usePathname()
+
+    return (
+        <div className={cn(
+            "flex h-screen w-20 flex-col items-center py-4",
+            "border-r border-border/50",
+            "bg-card/50 backdrop-blur-xl",
+            "transition-all duration-300 hover:w-64",
+            "group z-50 fixed left-0 top-0"
+        )}>
+            {/* Org Switcher */}
+            <div className="w-full px-2 mb-4">
+                <OrgSwitcher organizations={organizations} currentOrgId={currentOrgId} />
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex-1 w-full px-2 space-y-2">
+                {navigation.map((item) => {
+                    const isActive = pathname?.startsWith(item.href)
+                    return (
+                        <Link
+                            key={item.name}
+                            href={item.href}
+                            className={cn(
+                                "flex h-12 w-full items-center justify-center rounded-xl",
+                                "transition-all duration-200",
+                                "group-hover:justify-start group-hover:px-4",
+                                isActive
+                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                    : "text-muted-foreground hover:bg-accent/10 hover:text-foreground"
+                            )}
+                        >
+                            <item.icon className="h-6 w-6 shrink-0" />
+                            <span className="hidden group-hover:block ml-3 font-medium">
+                                {item.name}
+                            </span>
+                        </Link>
+                    )
+                })}
+            </nav>
+
+            {/* Theme Toggle & Logout */}
+            <div className="mt-auto w-full px-2 space-y-2">
+                <ThemeToggle />
+                <button
+                    onClick={() => logout()}
+                    className={cn(
+                        "flex h-12 w-full items-center justify-center rounded-xl",
+                        "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                        "transition-colors duration-200",
+                        "group-hover:justify-start group-hover:px-4"
+                    )}
+                >
+                    <LogOut className="h-6 w-6 shrink-0" />
+                    <span className="hidden group-hover:block ml-3 font-medium">
+                        Sair
+                    </span>
+                </button>
+            </div>
+        </div>
+    )
+}
+

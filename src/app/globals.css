@@ -1,26 +1,333 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* Map CSS variables to Tailwind colors */
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  /* Radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Animations */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.3s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Custom Utilities layer */
+@utility glass {
+  @apply bg-card/60 backdrop-blur-md border border-border/50 shadow-lg;
+}
+
+@utility glass-heavy {
+  @apply bg-card/80 backdrop-blur-xl border border-border/30 shadow-xl;
+}
+
+@utility glass-card {
+  @apply bg-card/50 backdrop-blur-md border border-border/30 hover:bg-card/70 transition-all duration-300;
+}
+
+@utility text-glow {
+  text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+}
+
+@utility interactive {
+  @apply transition-all duration-200 ease-out;
+}
+
+/* Base Styles */
+@layer base {
+
+  /* ============================================
+     LIGHT MODE (Default)
+     ============================================ */
+  :root {
+    /* Core Colors - Clean & Professional */
+    --background: 210 20% 98%;
+    /* #f8fafc */
+    --foreground: 222 47% 11%;
+    /* #0f172a */
+
+    --card: 0 0% 100%;
+    /* #ffffff */
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 263 70% 50%;
+    /* #8b5cf6 (Violet 500) */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    /* #f1f5f9 */
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 45%;
+
+    --accent: 186 100% 35%;
+    /* Cyan darker for contrast */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    /* #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    /* #10b981 */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    /* #f59e0b */
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    /* #e2e8f0 */
+    --input: 214 32% 91%;
+    --ring: 263 70% 50%;
+
+    --radius: 0.75rem;
+
+    /* Shadows for light mode */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  }
+
+  /* ============================================
+     DARK MODE
+     ============================================ */
+  .dark {
+    /* Core Colors - Obsidian & Neon */
+    --background: 222 47% 8%;
+    /* #0c0f1a (darker than before) */
+    --foreground: 210 40% 98%;
+    /* #f8fafc */
+
+    --card: 222 40% 13%;
+    /* #161b2e */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 263 70% 55%;
+    /* #9d74f7 (slightly brighter) */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 35% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 220 35% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 186 100% 50%;
+    /* #00ffff (Cyan bright) */
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 210 40% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 11%;
+
+    --border: 220 30% 20%;
+    --input: 220 30% 20%;
+    --ring: 263 70% 55%;
+
+    /* Shadows for dark mode */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+  }
+
+  /* Global Reset & Defaults */
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Background patterns */
+  .dark body {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(263 70% 30% / 0.3), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(186 100% 30% / 0.15), transparent),
+      hsl(var(--background));
+  }
+
+  body:not(.dark) {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(263 70% 90% / 0.4), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(186 100% 90% / 0.3), transparent),
+      hsl(var(--background));
+  }
+
+  /* Focus styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border/50 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-border/30;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border/50;
+  }
+}
+
+/* Typography utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-display {
+    @apply text-4xl font-bold tracking-tight;
+  }
+
+  .text-headline {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+
+  .text-title {
+    @apply text-lg font-semibold;
+  }
+
+  .text-body {
+    @apply text-base font-normal;
+  }
+
+  .text-body-sm {
+    @apply text-sm font-normal;
+  }
+
+  .text-label {
+    @apply text-xs font-medium uppercase tracking-wider;
+  }
+
+  .text-caption {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+/* Transition for theme change */
+html.transitioning,
+html.transitioning *,
+html.transitioning *::before,
+html.transitioning *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+  transition-delay: 0s !important;
 }
