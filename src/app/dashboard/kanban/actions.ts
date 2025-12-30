@@ -16,7 +16,7 @@ export async function getKanbanData(selectedPipelineId?: string) {
         .from('organization_members')
         .select('organization_id')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
 
     if (memberError || !member || !member.organization_id) {
         throw new Error(`Você não está vinculado a uma organização. Vá para /onboarding. Error: ${memberError?.message || 'member is null'}`)
