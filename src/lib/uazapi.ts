@@ -1,0 +1,251 @@
+/**
+ * UAZAPI Client
+ * Centralized client for UAZAPI WhatsApp integration
+ * Server: https://atendsoft.uazapi.com (fixed)
+ */
+
+const UAZAPI_BASE_URL = 'https://atendsoft.uazapi.com'
+
+// Get admin token from environment
+function getAdminToken(): string {
+    const token = process.env.UAZAPI_ADMIN_TOKEN
+    if (!token) {
+        throw new Error('UAZAPI_ADMIN_TOKEN environment variable is required')
+    }
+    return token
+}
+
+// Types
+export interface UazapiInstance {
+    name: string
+    token: string
+    status: 'disconnected' | 'connecting' | 'connected'
+    phone?: string
+}
+
+export interface UazapiStatusResponse {
+    status: 'disconnected' | 'connecting' | 'connected'
+    qrcode?: string
+    phone?: string
+    pairingCode?: string
+}
+
+export interface UazapiConnectResponse {
+    status: string
+    qrcode?: string
+    pairingCode?: string
+}
+
+export interface UazapiWebhookConfig {
+    enabled: boolean
+    url: string
+    events: string[]
+    excludeMessages?: string[]
+}
+
+/**
+ * Create a new WhatsApp instance
+ * POST /instance/init
+ */
+export async function createInstance(instanceName: string): Promise<{ name: string; token: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/init`, {
+        method: 'POST',
+        headers: {
+            'admintoken': getAdminToken(),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            name: instanceName,
+            systemName: 'crm-batepapo'
+        })
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        throw new Error(`Failed to create instance: ${error}`)
+    }
+
+    return response.json()
+}
+
+/**
+ * List all instances
+ * GET /instance/all
+ */
+export async function listInstances(): Promise<UazapiInstance[]> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/all`, {
+        headers: {
+            'admintoken': getAdminToken()
+        }
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to list instances')
+    }
+
+    return response.json()
+}
+
+/**
+ * Configure webhook for an instance
+ * POST /webhook
+ */
+export async function configureWebhook(
+    instanceToken: string,
+    webhookUrl: string
+): Promise<void> {
+    const config: UazapiWebhookConfig = {
+        enabled: true,
+        url: webhookUrl,
+        events: ['messages', 'connection', 'messages_update'],
+        excludeMessages: ['wasSentByApi']
+    }
+
+    const response = await fetch(`${UAZAPI_BASE_URL}/webhook`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        throw new Error(`Failed to configure webhook: ${error}`)
+    }
+}
+
+/**
+ * Start connection (generate QR code)
+ * POST /instance/connect
+ */
+export async function connect(instanceToken: string): Promise<UazapiConnectResponse> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/connect`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({}) // Empty body = generate QR code
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        throw new Error(`Failed to connect: ${error}`)
+    }
+
+    return response.json()
+}
+
+/**
+ * Get instance status (includes QR code if connecting)
+ * GET /instance/status
+ */
+export async function getStatus(instanceToken: string): Promise<UazapiStatusResponse> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/status`, {
+        headers: {
+            'token': instanceToken
+        }
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to get status')
+    }
+
+    return response.json()
+}
+
+/**
+ * Disconnect instance
+ * POST /instance/disconnect
+ */
+export async function disconnect(instanceToken: string): Promise<void> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/disconnect`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        }
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to disconnect')
+    }
+}
+
+/**
+ * Delete instance completely
+ * DELETE /instance
+ */
+export async function deleteInstance(instanceToken: string): Promise<void> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance`, {
+        method: 'DELETE',
+        headers: {
+            'token': instanceToken
+        }
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to delete instance')
+    }
+}
+
+/**
+ * Send text message
+ * POST /message/text
+ */
+export async function sendTextMessage(
+    instanceToken: string,
+    phone: string,
+    message: string
+): Promise<{ messageId: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/message/text`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            phone: phone.replace(/\D/g, ''), // Only digits
+            message
+        })
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        throw new Error(`Failed to send message: ${error}`)
+    }
+
+    return response.json()
+}
+
+/**
+ * Send image message
+ * POST /message/image
+ */
+export async function sendImageMessage(
+    instanceToken: string,
+    phone: string,
+    imageUrl: string,
+    caption?: string
+): Promise<{ messageId: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/message/image`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            phone: phone.replace(/\D/g, ''),
+            url: imageUrl,
+            caption
+        })
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to send image')
+    }
+
+    return response.json()
+}

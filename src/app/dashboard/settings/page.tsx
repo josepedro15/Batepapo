@@ -3,7 +3,7 @@ import { revokeApiKey } from './actions'
 import { GenerateKeyForm } from './generate-key-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { TagManagement } from '@/components/settings/tag-management'
-import { WhatsappStatusCard } from '@/components/settings/whatsapp-status-card'
+import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
 import { Key, Trash2, Settings2, Shield, Palette, Bell, Database, Copy } from 'lucide-react'
 
 export default async function SettingsPage() {
@@ -103,7 +103,7 @@ export default async function SettingsPage() {
                 {/* Right Column - Secondary Settings */}
                 <div className="space-y-6">
                     {/* WhatsApp Status */}
-                    <WhatsappStatusCard />
+                    <WhatsAppConnectionCard />
 
                     {/* Tag Management */}
                     <TagManagement />
