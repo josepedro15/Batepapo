@@ -307,11 +307,10 @@ export function ChatInterface({
                                         if (!inputText.trim()) return
 
                                         // Optimistic UI Update can go here
-                                        const tempMsg = { id: Date.now().toString(), body: inputText, sender_type: 'user', created_at: new Date().toISOString() } as Message
-                                        setMessages(prev => [...prev, tempMsg])
                                         setInputText('')
 
-                                        await sendMessage(selectedContact.id, tempMsg.body, orgId)
+                                        // Send to DB first (Realtime will update UI)
+                                        await sendMessage(selectedContact.id, inputText, orgId)
 
                                         // Also send via WhatsApp
                                         try {
@@ -320,7 +319,7 @@ export function ChatInterface({
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
                                                     contact_id: selectedContact.id,
-                                                    message: tempMsg.body,
+                                                    message: inputText,
                                                     type: 'text'
                                                 })
                                             })

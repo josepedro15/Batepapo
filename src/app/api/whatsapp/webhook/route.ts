@@ -123,14 +123,17 @@ export async function POST(request: NextRequest) {
 
             // Format phone number
             const phone = data.key.remoteJid.split('@')[0]
+            const digits = phone.replace(/\D/g, '')
+            const rawPhone = `+${digits}`
             const formattedPhone = formatPhoneNumber(phone)
 
             // Find or create contact
+            // Try to find by raw phone first (matches NewChatDialog format)
             const { data: existingContact } = await supabase
                 .from('contacts')
                 .select('id')
                 .eq('organization_id', organizationId)
-                .eq('phone', formattedPhone)
+                .or(`phone.eq.${rawPhone},phone.eq.${formattedPhone}`)
                 .single()
 
             let contactId: string
