@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -46,9 +46,14 @@ export function ChatInterface({
 
 
     useEffect(() => {
-        // Subscribe to new messages for the selected contact
         if (!selectedContact) return
 
+        // 1. Load initial history
+        getMessages(selectedContact.id).then(msgs => {
+            setMessages(msgs || [])
+        })
+
+        // 2. Subscribe to new messages
         const channel = supabase.channel(`chat:${selectedContact.id}`)
             .on('postgres_changes', {
                 event: 'INSERT',
