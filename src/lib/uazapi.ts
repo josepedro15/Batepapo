@@ -226,15 +226,15 @@ export async function sendTextMessage(
     phone: string,
     message: string
 ): Promise<{ messageId: string }> {
-    const response = await fetch(`${UAZAPI_BASE_URL}/message/text`, {
+    const response = await fetch(`${UAZAPI_BASE_URL}/send/text`, {
         method: 'POST',
         headers: {
             'token': instanceToken,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            phone: phone.replace(/\D/g, ''), // Only digits
-            message
+            number: phone.replace(/\D/g, ''),
+            text: message
         })
     })
 
