@@ -275,3 +275,41 @@ export async function sendImageMessage(
 
     return response.json()
 }
+
+/**
+ * Get WhatsApp contacts from the connected phone
+ * GET /contacts
+ */
+export interface WhatsAppContact {
+    id: string
+    name: string
+    phone: string
+    isGroup?: boolean
+    profilePicUrl?: string
+}
+
+export async function getContacts(instanceToken: string): Promise<WhatsAppContact[]> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/contacts`, {
+        headers: {
+            'token': instanceToken
+        }
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to get contacts')
+    }
+
+    const data = await response.json()
+
+    // Format contacts - filter out groups and extract phone
+    return (data || [])
+        .filter((c: any) => !c.id?.includes('@g.us')) // Filter groups
+        .map((c: any) => ({
+            id: c.id,
+            name: c.name || c.notify || c.id?.split('@')[0] || 'Unknown',
+            phone: c.id?.split('@')[0] || '',
+            profilePicUrl: c.profilePicUrl
+        }))
+        .slice(0, 100) // Limit to 100 contacts
+}
+
