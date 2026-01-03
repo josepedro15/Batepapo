@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { assignChat, sendMessage, finishChat, reopenChat } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
+import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
 import { toast } from 'sonner' // Assuming toast is available or use console/native alert if not
 
@@ -37,6 +38,7 @@ export function ChatInterface({
     const [messages, setMessages] = useState<Message[]>([])
     const [inputText, setInputText] = useState('')
     const [showTransferDialog, setShowTransferDialog] = useState(false)
+    const [showNewChatDialog, setShowNewChatDialog] = useState(false)
 
     // Realtime Setup
     const supabase = createClient()
@@ -107,6 +109,17 @@ export function ChatInterface({
 
             {/* LEFT SIDEBAR: Contact List */}
             <div className="w-80 flex flex-col border-r border-white/5 bg-slate-900/30">
+                {/* Header with New Chat button */}
+                <div className="p-3 border-b border-white/5">
+                    <button
+                        onClick={() => setShowNewChatDialog(true)}
+                        className="w-full bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Nova Conversa
+                    </button>
+                </div>
+
                 {/* Tabs */}
                 <div className="flex border-b border-white/5 overflow-x-auto scrollbar-hide">
                     <button
@@ -294,6 +307,21 @@ export function ChatInterface({
                                         setInputText('')
 
                                         await sendMessage(selectedContact.id, tempMsg.body, orgId)
+
+                                        // Also send via WhatsApp
+                                        try {
+                                            await fetch('/api/whatsapp/send', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    contact_id: selectedContact.id,
+                                                    message: tempMsg.body,
+                                                    type: 'text'
+                                                })
+                                            })
+                                        } catch (e) {
+                                            console.error('WhatsApp send failed:', e)
+                                        }
                                     }}
                                 >
                                     <input
@@ -336,6 +364,17 @@ export function ChatInterface({
                     onClose={() => setShowTransferDialog(false)}
                 />
             )}
+
+            {/* New Chat Dialog */}
+            <NewChatDialog
+                open={showNewChatDialog}
+                onClose={() => setShowNewChatDialog(false)}
+                onChatCreated={(contactId) => {
+                    // Refresh page to show new contact
+                    window.location.reload()
+                }}
+                orgId={orgId}
+            />
 
         </div>
     )
