@@ -135,17 +135,25 @@ export async function connect(instanceToken: string): Promise<UazapiConnectRespo
         throw new Error(`Failed to connect: ${error}`)
     }
 
-    return response.json()
+    const data = await response.json()
+
+    // QR code is nested inside instance object
+    return {
+        status: data.instance?.status || 'connecting',
+        qrcode: data.instance?.qrcode || data.qrcode,
+        pairingCode: data.instance?.paircode || data.paircode
+    }
 }
 
 /**
  * Get instance status (includes QR code if connecting)
- * GET /instance/status
+ * Uses /instance/all with admintoken to get complete status including qrcode
  */
 export async function getStatus(instanceToken: string): Promise<UazapiStatusResponse> {
-    const response = await fetch(`${UAZAPI_BASE_URL}/instance/status`, {
+    // Use /instance/all which includes qrcode in response
+    const response = await fetch(`${UAZAPI_BASE_URL}/instance/all`, {
         headers: {
-            'token': instanceToken
+            'admintoken': getAdminToken()
         }
     })
 
@@ -153,7 +161,25 @@ export async function getStatus(instanceToken: string): Promise<UazapiStatusResp
         throw new Error('Failed to get status')
     }
 
-    return response.json()
+    const instances = await response.json()
+
+    // Find our instance by token
+    const instance = instances.find((inst: { token: string }) => inst.token === instanceToken)
+
+    if (!instance) {
+        return {
+            status: 'disconnected',
+            qrcode: undefined,
+            phone: undefined
+        }
+    }
+
+    return {
+        status: instance.status || 'disconnected',
+        qrcode: instance.qrcode || undefined,
+        phone: instance.owner || undefined,
+        pairingCode: instance.paircode || undefined
+    }
 }
 
 /**
