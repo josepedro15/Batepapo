@@ -233,7 +233,7 @@ export async function sendTextMessage(
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            number: phone.replace(/\D/g, ''),
+            number: phone.includes('@') ? phone : `${phone.replace(/\D/g, '')}@s.whatsapp.net`,
             text: message
         })
     })
