@@ -261,9 +261,10 @@ export async function POST(request: NextRequest) {
                 console.log('Audio message detected. Proceeding to download...')
                 try {
                     // 1. Download Base64 from UAZAPI
-                    const media = await uazapi.downloadMedia(instanceToken as string, messageId as string)
+                    // Use msg.id (long ID) as n8n does
+                    const media = await uazapi.downloadMedia(instanceToken as string, msg.id || messageId || '')
 
-                    if (media && media.base64) {
+                    if (media && media.base64 && media.base64.length > 100) {
                         // 2. Convert Base64 to Buffer
                         const buffer = Buffer.from(media.base64, 'base64')
                         const fileName = `${contactId}/${messageId}.${media.mimeType.split('/')[1] || 'ogg'}`
@@ -292,7 +293,7 @@ export async function POST(request: NextRequest) {
                             console.log('✅ Audio uploaded to:', mediaUrl)
                         }
                     } else {
-                        console.error('Failed to download media form UAZAPI')
+                        console.error('Failed to download media form UAZAPI (empty or null)')
                     }
                 } catch (err: any) {
                     console.error('Error processing audio:', err)

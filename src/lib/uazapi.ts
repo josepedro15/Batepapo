@@ -364,20 +364,22 @@ export async function downloadMedia(
             },
             body: JSON.stringify({
                 id: messageId,
-                return_base64: true
+                return_base64: "true"
             })
         })
 
-        if (!response.ok) return null
+        if (!response.ok) {
+            console.error('UAZAPI download failed:', response.status, await response.text())
+            return null
+        }
 
         const data = await response.json()
 
-        // The API returns { "data": "base64string", "mimetype": "audio/ogg" } or similar
-        // Based on n8n node, we expect the body to contain the data.
-        // If the user didn't specify the response format, we assume it has 'data' or 'base64'.
-        // For safety, I'll log what it returns if it fails.
+        // Debug log
+        console.log('UAZAPI Download Response Keys:', Object.keys(data))
+
         return {
-            base64: data.data || data.base64 || data.content,
+            base64: data.data || data.base64 || data.content || data.response || data.body,
             mimeType: data.mimetype || data.mimeType || 'audio/ogg'
         }
     } catch (error) {
