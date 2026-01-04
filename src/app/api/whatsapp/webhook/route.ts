@@ -153,27 +153,46 @@ export async function POST(request: NextRequest) {
             const rawPhone = `+${digits}`
             const formattedPhone = formatPhoneNumber(phone)
 
-            // Find or create contact
-            // Try to find by raw phone first (matches NewChatDialog format)
-            const { data: existingContact } = await supabase
+            console.log('Looking for contact with phone:', { rawPhone, formattedPhone, organizationId })
+
+            // Find or create contact - try raw phone first, then formatted
+            let existingContact = null
+
+            // Try raw phone format
+            const { data: rawPhoneContact } = await supabase
                 .from('contacts')
                 .select('id')
                 .eq('organization_id', organizationId)
-                .or(`phone.eq.${rawPhone},phone.eq.${formattedPhone}`)
+                .eq('phone', rawPhone)
                 .single()
+
+            if (rawPhoneContact) {
+                existingContact = rawPhoneContact
+            } else {
+                // Try formatted phone
+                const { data: formattedPhoneContact } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .eq('organization_id', organizationId)
+                    .eq('phone', formattedPhone)
+                    .single()
+                existingContact = formattedPhoneContact
+            }
 
             let contactId: string
 
             if (existingContact) {
                 contactId = existingContact.id
+                console.log('Found existing contact:', contactId)
             } else {
                 // Create new contact
+                console.log('Creating new contact...')
                 const { data: newContact, error } = await supabase
                     .from('contacts')
                     .insert({
                         organization_id: organizationId,
-                        phone: formattedPhone,
-                        name: data.pushName || formattedPhone, // Use pushName from WhatsApp
+                        phone: rawPhone, // Use raw phone for consistency
+                        name: data.pushName || rawPhone,
                         status: 'open'
                     })
                     .select('id')
@@ -184,27 +203,29 @@ export async function POST(request: NextRequest) {
                     return NextResponse.json({ error: 'Failed to create contact' }, { status: 500 })
                 }
                 contactId = newContact.id
+                console.log('Created new contact:', contactId)
             }
 
-            // Save message
+            // Save message (without whatsapp_id if column doesn't exist)
+            console.log('Saving message for contact:', contactId)
             const { error: msgError } = await supabase
                 .from('messages')
                 .insert({
                     organization_id: organizationId,
                     contact_id: contactId,
-                    sender_type: isFromMe ? 'user' : 'contact', // Handle phone-sent messages
-                    sender_id: isFromMe ? null : null, // System/User ID logic is complex for webhook, leaving null for now
+                    sender_type: isFromMe ? 'user' : 'contact',
                     body: messageBody || null,
                     media_url: mediaUrl || null,
                     media_type: mediaType || null,
-                    status: isFromMe ? 'sent' : 'received',
-                    whatsapp_id: whatsappMessageId // Store ID for deduplication
+                    status: isFromMe ? 'sent' : 'received'
+                    // Note: whatsapp_id removed - column may not exist
                 })
 
             if (msgError) {
                 console.error('Error saving message:', msgError)
+                return NextResponse.json({ error: 'Failed to save message', details: msgError.message }, { status: 500 })
             } else {
-                console.log(`Message saved from ${formattedPhone} (ID: ${whatsappMessageId})`)
+                console.log(`Message saved from ${rawPhone}`)
             }
         }
 
