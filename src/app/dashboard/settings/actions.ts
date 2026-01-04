@@ -64,7 +64,7 @@ export async function addTeamMember(formData: FormData) {
     return { success: true }
 }
 
-import { adminAuthClient } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function createUserAccount(formData: FormData) {
     const supabase = await createClient()
@@ -90,12 +90,13 @@ export async function createUserAccount(formData: FormData) {
         return { error: 'Apenas gestores podem criar usuários.' }
     }
 
-    if (!adminAuthClient) {
+    const adminClient = createAdminClient()
+    if (!adminClient) {
         return { error: 'Configuração do servidor incompleta. Contate o administrador.' }
     }
 
     // 2. Create User via Admin API
-    const { data: newUser, error: createError } = await adminAuthClient.auth.admin.createUser({
+    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true, // Auto-confirm email
@@ -110,7 +111,7 @@ export async function createUserAccount(formData: FormData) {
             console.log('User already exists, fetching ID to link to team...')
 
             // RPC failed because it relies on public.profiles. We will use admin API to find the user in auth.users directly.
-            const { data: userList, error: listError } = await adminAuthClient.auth.admin.listUsers({
+            const { data: userList, error: listError } = await adminClient.auth.admin.listUsers({
                 page: 1,
                 perPage: 1000
             })
@@ -129,7 +130,7 @@ export async function createUserAccount(formData: FormData) {
             console.log('Found existing user:', existingUser.id)
 
             // Check if user is already in this org
-            const { data: existingMember } = await adminAuthClient
+            const { data: existingMember } = await adminClient
                 .from('organization_members')
                 .select('id')
                 .eq('organization_id', membership.organization_id)
@@ -141,7 +142,7 @@ export async function createUserAccount(formData: FormData) {
             }
 
             // Check if profile exists (to avoid FK violation)
-            const { data: profile } = await adminAuthClient
+            const { data: profile } = await adminClient
                 .from('profiles')
                 .select('id')
                 .eq('id', existingUser.id)
@@ -149,7 +150,7 @@ export async function createUserAccount(formData: FormData) {
 
             if (!profile) {
                 console.log('Profile missing for existing user, creating now...')
-                const { error: profileError } = await adminAuthClient
+                const { error: profileError } = await adminClient
                     .from('profiles')
                     .insert({
                         id: existingUser.id,
@@ -164,7 +165,7 @@ export async function createUserAccount(formData: FormData) {
             }
 
             // Proceed to insert member
-            const { error: linkError } = await adminAuthClient
+            const { error: linkError } = await adminClient
                 .from('organization_members')
                 .insert({
                     organization_id: membership.organization_id,
@@ -193,10 +194,10 @@ export async function createUserAccount(formData: FormData) {
     // Let's use the Admin Client for the insert to be 100% sure we can add the member row.
 
     // We need to insert into public.organization_members
-    // The adminAuthClient by default points to 'auth' schema for auth methods, 
+    // The adminClient by default points to 'auth' schema for auth methods, 
     // but the `from` method works on public schema with service role.
 
-    const { error: memberError } = await adminAuthClient
+    const { error: memberError } = await adminClient
         .from('organization_members')
         .insert({
             organization_id: membership.organization_id,
@@ -240,7 +241,8 @@ export async function updateUserAccount(formData: FormData) {
         return { error: 'Apenas gestores podem editar usuários.' }
     }
 
-    if (!adminAuthClient) {
+    const adminClient = createAdminClient()
+    if (!adminClient) {
         return { error: 'Configuração do servidor incompleta. Contate o administrador.' }
     }
 
@@ -252,7 +254,7 @@ export async function updateUserAccount(formData: FormData) {
         updateData.password = password
     }
 
-    const { error: updateAuthError } = await adminAuthClient.auth.admin.updateUserById(
+    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(
         userId,
         updateData
     )
@@ -263,7 +265,7 @@ export async function updateUserAccount(formData: FormData) {
     }
 
     // 3. Update Profile (Name) in public table
-    const { error: updateProfileError } = await adminAuthClient
+    const { error: updateProfileError } = await adminClient
         .from('profiles')
         .update({ name: name })
         .eq('id', userId)
@@ -275,7 +277,7 @@ export async function updateUserAccount(formData: FormData) {
 
     // 4. Update Organization Role
     // Check if target user is in the org
-    const { data: targetMember } = await adminAuthClient
+    const { data: targetMember } = await adminClient
         .from('organization_members')
         .select('id, role')
         .eq('organization_id', membership.organization_id)
@@ -288,7 +290,7 @@ export async function updateUserAccount(formData: FormData) {
 
     // If role changed
     if (targetMember.role !== role) {
-        const { error: roleError } = await adminAuthClient
+        const { error: roleError } = await adminClient
             .from('organization_members')
             .update({ role: role })
             .eq('id', targetMember.id)

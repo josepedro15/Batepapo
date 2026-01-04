@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
-import { adminAuthClient } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Stripe from 'stripe'
 
 // Disable body parsing, we need raw body for webhook verification
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+    // Create admin client
+    const adminClient = createAdminClient()
+
     // Check if Stripe and Supabase Admin are configured
-    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !adminAuthClient) {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !adminClient) {
         return NextResponse.json(
             { error: 'Stripe integration not configured' },
             { status: 503 }
@@ -40,8 +43,6 @@ export async function POST(request: NextRequest) {
             { status: 400 }
         )
     }
-
-    const supabase = adminAuthClient
 
     try {
         switch (event.type) {
@@ -86,13 +87,13 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-    if (!adminAuthClient) return
+    if (!adminClient) return
 
     const userId = session.metadata?.supabase_user_id
     if (!userId) return
 
     // Create organization for the user
-    const { data: org, error: orgError } = await adminAuthClient
+    const { data: org, error: orgError } = await adminClient
         .from('organizations')
         .insert({
             name: 'Minha Empresa',
@@ -108,14 +109,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
 
     // Add user as owner member
-    await adminAuthClient.from('organization_members').insert({
+    await adminClient.from('organization_members').insert({
         organization_id: org.id,
         user_id: userId,
         role: 'owner',
     })
 
     // Create default pipeline
-    const { data: pipeline } = await adminAuthClient
+    const { data: pipeline } = await adminClient
         .from('pipelines')
         .insert({
             organization_id: org.id,
@@ -126,7 +127,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
     if (pipeline) {
         // Create default stages
-        await adminAuthClient.from('stages').insert([
+        await adminClient.from('stages').insert([
             { pipeline_id: pipeline.id, name: 'Novo', position: 0, color: '#3b82f6' },
             { pipeline_id: pipeline.id, name: 'Em Negociação', position: 1, color: '#f59e0b' },
             { pipeline_id: pipeline.id, name: 'Fechado', position: 2, color: '#10b981' },
@@ -135,7 +136,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
     // Link subscription to organization
     if (session.subscription) {
-        await adminAuthClient
+        await adminClient
             .from('subscriptions')
             .update({ organization_id: org.id })
             .eq('id', session.subscription as string)
@@ -143,7 +144,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function upsertSubscription(subscription: Stripe.Subscription) {
-    if (!adminAuthClient) return
+    if (!adminClient) return
 
     const userId = subscription.metadata?.supabase_user_id
     if (!userId) return
@@ -151,7 +152,7 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
     const priceId = subscription.items.data[0]?.price.id
     const item = subscription.items.data[0]
 
-    await adminAuthClient.from('subscriptions').upsert({
+    await adminClient.from('subscriptions').upsert({
         id: subscription.id,
         user_id: userId,
         price_id: priceId,
@@ -180,9 +181,9 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
 }
 
 async function deleteSubscription(subscriptionId: string) {
-    if (!adminAuthClient) return
+    if (!adminClient) return
 
-    await adminAuthClient
+    await adminClient
         .from('subscriptions')
         .update({ status: 'canceled' })
         .eq('id', subscriptionId)
