@@ -115,10 +115,13 @@ export async function sendMessage(contactId: string, body: string, orgId: string
             body
         )
 
-        // Update status to 'sent'
+        // Update status to 'sent' AND save whatsapp_id
         await supabase
             .from('messages')
-            .update({ status: 'sent' })
+            .update({
+                status: 'sent',
+                whatsapp_id: response.messageId
+            })
             .eq('id', msg.id)
 
     } catch (e: any) {

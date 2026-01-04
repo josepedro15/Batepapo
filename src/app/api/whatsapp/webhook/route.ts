@@ -94,9 +94,35 @@ export async function POST(request: NextRequest) {
         // Handle message events
         if (body.event === 'messages' || body.event === 'messages.upsert' || body.data?.key?.remoteJid) {
             const data = body.data
-            if (!data?.key?.remoteJid || data.key.fromMe) {
+
+            // Log full data for debugging
+            console.log('Webhook Message Data:', JSON.stringify(data, null, 2))
+
+            if (!data?.key?.remoteJid) {
                 return NextResponse.json({ success: true })
             }
+
+            // Check for duplicates
+            const whatsappMessageId = data.key.id
+            if (whatsappMessageId) {
+                const { data: existingMessage } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('whatsapp_id', whatsappMessageId)
+                    .single()
+
+                if (existingMessage) {
+                    console.log(`Duplicate message ignored: ${whatsappMessageId}`)
+                    return NextResponse.json({ success: true })
+                }
+            }
+
+            // Ignore own messages (unless we want to track phone-sent messages)
+            // Ideally we track them, but strict deduplication above handles the case if we already saved it via API
+            // For now, if fromMe is true AND it wasn't found in DB above, it means it was sent via Phone directly.
+            // We should probably save it as sender_type='user'.
+
+            const isFromMe = data.key.fromMe || false
 
             // Extract message content
             const message = data.message
@@ -147,7 +173,7 @@ export async function POST(request: NextRequest) {
                     .insert({
                         organization_id: organizationId,
                         phone: formattedPhone,
-                        name: data.pushName || formattedPhone,
+                        name: data.pushName || formattedPhone, // Use pushName from WhatsApp
                         status: 'open'
                     })
                     .select('id')
@@ -166,17 +192,19 @@ export async function POST(request: NextRequest) {
                 .insert({
                     organization_id: organizationId,
                     contact_id: contactId,
-                    sender_type: 'contact',
+                    sender_type: isFromMe ? 'user' : 'contact', // Handle phone-sent messages
+                    sender_id: isFromMe ? null : null, // System/User ID logic is complex for webhook, leaving null for now
                     body: messageBody || null,
                     media_url: mediaUrl || null,
                     media_type: mediaType || null,
-                    status: 'received'
+                    status: isFromMe ? 'sent' : 'received',
+                    whatsapp_id: whatsappMessageId // Store ID for deduplication
                 })
 
             if (msgError) {
                 console.error('Error saving message:', msgError)
             } else {
-                console.log(`Message saved from ${formattedPhone}`)
+                console.log(`Message saved from ${formattedPhone} (ID: ${whatsappMessageId})`)
             }
         }
 
