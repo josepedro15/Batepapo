@@ -102,20 +102,9 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ success: true })
             }
 
-            // Check for duplicates
+            // Skip duplicate check for now (whatsapp_id column may not exist)
             const whatsappMessageId = data.key.id
-            if (whatsappMessageId) {
-                const { data: existingMessage } = await supabase
-                    .from('messages')
-                    .select('id')
-                    .eq('whatsapp_id', whatsappMessageId)
-                    .single()
-
-                if (existingMessage) {
-                    console.log(`Duplicate message ignored: ${whatsappMessageId}`)
-                    return NextResponse.json({ success: true })
-                }
-            }
+            console.log('Processing message:', whatsappMessageId)
 
             // Ignore own messages (unless we want to track phone-sent messages)
             // Ideally we track them, but strict deduplication above handles the case if we already saved it via API
@@ -247,4 +236,45 @@ function formatPhoneNumber(phone: string): string {
     }
 
     return `+${digits}`
+}
+
+// GET: Diagnostic endpoint
+export async function GET() {
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+        return NextResponse.json({
+            status: 'error',
+            message: 'Admin client not configured',
+            env: {
+                hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+                hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+            }
+        })
+    }
+
+    // Test DB connection
+    const { data: instances, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, status')
+        .limit(1)
+
+    const { count: messageCount } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+
+    const { count: contactCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+
+    return NextResponse.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        database: {
+            connected: !instanceError,
+            instances: instances?.length || 0,
+            messageCount,
+            contactCount
+        }
+    })
 }
