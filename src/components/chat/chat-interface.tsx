@@ -8,7 +8,8 @@ import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, P
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
-import { toast } from 'sonner' // Assuming toast is available or use console/native alert if not
+import { toast } from 'sonner'
+import { ImageDialog } from '@/components/dialogs/image-dialog'
 
 // Types (simplified for this file)
 type Contact = { id: string; name: string; phone: string; tags: string[] | null; last_message_at?: string; avatar_url?: string }
@@ -50,7 +51,8 @@ export function ChatInterface({
 
     // Media State
     const [isRecording, setIsRecording] = useState(false)
-    const [mediaFile, setMediaFile] = useState<{ file: File, preview: string, type: 'image' | 'audio' } | null>(null)
+    const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
+    const [clickedImage, setClickedImage] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const chunksRef = useRef<Blob[]>([])
@@ -76,11 +78,11 @@ export function ChatInterface({
             mediaRecorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
                 const file = new File([blob], 'recording.webm', { type: 'audio/webm' })
-                setMediaFile({
+                setMediaFiles(prev => [...prev, {
                     file,
                     preview: URL.createObjectURL(blob),
                     type: 'audio'
-                })
+                }])
                 stream.getTracks().forEach(track => track.stop())
             }
 
@@ -100,33 +102,44 @@ export function ChatInterface({
     }
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (file) {
-            if (file.type.startsWith('image/')) {
-                setMediaFile({
-                    file,
-                    preview: URL.createObjectURL(file),
-                    type: 'image'
-                })
-            } else {
-                toast.error('Apenas imagens são permitidas por enquanto (use o mic para áudio)')
+        if (e.target.files && e.target.files.length > 0) {
+            const newFiles = Array.from(e.target.files).filter(file => file.type.startsWith('image/'))
+
+            if (newFiles.length === 0) {
+                toast.error('Apenas imagens são permitidas')
+                return
             }
+
+            const newMediaItems = newFiles.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+                type: 'image' as const
+            }))
+
+            setMediaFiles(prev => [...prev, ...newMediaItems])
         }
     }
 
     const handleSendMedia = async () => {
-        if (!mediaFile || !selectedContact) return
+        if (mediaFiles.length === 0 || !selectedContact) return
 
-        const loadingId = toast.loading('Enviando mídia...')
+        const loadingId = toast.loading('Iniciando envio...')
         try {
-            const formData = new FormData()
-            formData.append('file', mediaFile.file)
-            formData.append('type', mediaFile.type)
+            let count = 0
+            for (const media of mediaFiles) {
+                count++
+                toast.loading(`Enviando ${count} de ${mediaFiles.length}...`, { id: loadingId })
 
-            await sendMedia(selectedContact.id, formData, orgId)
+                const formData = new FormData()
+                formData.append('file', media.file)
+                formData.append('type', media.type)
 
-            setMediaFile(null)
+                await sendMedia(selectedContact.id, formData, orgId)
+            }
+
+            setMediaFiles([])
             toast.dismiss(loadingId)
+            toast.success('Mídia enviada!')
         } catch (error) {
             console.error(error)
             toast.error('Erro ao enviar mídia', { id: loadingId })
@@ -463,8 +476,9 @@ export function ChatInterface({
                                                     <img
                                                         src={message.media_url}
                                                         alt="Imagem"
-                                                        className="rounded-lg max-w-[250px] max-h-[300px] object-cover border border-white/10"
+                                                        className="rounded-lg max-w-[250px] max-h-[300px] object-cover border border-white/10 cursor-pointer hover:opacity-90 transition-opacity"
                                                         loading="lazy"
+                                                        onClick={() => setClickedImage(message.media_url || '')}
                                                     />
                                                 </div>
                                             )}
@@ -484,7 +498,7 @@ export function ChatInterface({
                                     className="flex gap-2 items-end"
                                     onSubmit={async (e) => {
                                         e.preventDefault()
-                                        if (mediaFile) {
+                                        if (mediaFiles.length > 0) {
                                             await handleSendMedia()
                                         } else if (inputText.trim()) {
                                             const messageBody = inputText
@@ -498,6 +512,7 @@ export function ChatInterface({
                                         ref={fileInputRef}
                                         className="hidden"
                                         accept="image/*"
+                                        multiple
                                         onChange={handleFileSelect}
                                     />
 
@@ -530,25 +545,36 @@ export function ChatInterface({
 
                                     {/* INPUT / PREVIEW AREA */}
                                     <div className="flex-1 relative">
-                                        {mediaFile ? (
-                                            <div className="flex items-center gap-3 p-2 bg-slate-800 rounded-xl border border-violet-500/30">
-                                                {mediaFile.type === 'image' ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={mediaFile.preview} alt="Preview" className="h-10 w-10 object-cover rounded-lg" />
-                                                ) : (
-                                                    <div className="flex items-center gap-2 px-2">
-                                                        <Mic className="h-4 w-4 text-violet-400" />
-                                                        <span className="text-sm text-slate-300">Áudio gravado</span>
-                                                        <audio src={mediaFile.preview} controls className="h-8 w-24" />
+                                        {mediaFiles.length > 0 ? (
+                                            <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-xl border border-violet-500/30 overflow-x-auto">
+                                                {mediaFiles.map((media, index) => (
+                                                    <div key={index} className="relative group min-w-fit">
+                                                        {media.type === 'image' ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img
+                                                                src={media.preview}
+                                                                alt={`Preview ${index}`}
+                                                                className="h-12 w-12 object-cover rounded-lg border border-white/10"
+                                                            />
+                                                        ) : (
+                                                            <div className="flex items-center justify-center h-12 w-12 bg-violet-500/20 rounded-lg border border-violet-500/30">
+                                                                <Mic className="h-5 w-5 text-violet-400" />
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setMediaFiles(prev => prev.filter((_, i) => i !== index))}
+                                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </button>
                                                     </div>
-                                                )}
-
-                                                <div className="flex-1" />
-
+                                                ))}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setMediaFile(null)}
-                                                    className="p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-red-400"
+                                                    onClick={() => setMediaFiles([])}
+                                                    className="sticky right-0 ml-2 p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-red-400"
+                                                    title="Limpar tudo"
                                                 >
                                                     <X className="h-5 w-5" />
                                                 </button>
@@ -567,10 +593,10 @@ export function ChatInterface({
                                     {/* SEND BUTTON */}
                                     <button
                                         type="submit"
-                                        disabled={!inputText.trim() && !mediaFile}
+                                        disabled={!inputText.trim() && mediaFiles.length === 0}
                                         className={cn(
                                             "p-3 rounded-xl transition-colors mb-[1px]",
-                                            (!inputText.trim() && !mediaFile)
+                                            (!inputText.trim() && mediaFiles.length === 0)
                                                 ? "bg-slate-800 text-slate-600 cursor-not-allowed"
                                                 : "bg-violet-600 hover:bg-violet-700 text-white"
                                         )}
@@ -618,6 +644,14 @@ export function ChatInterface({
                     window.location.reload()
                 }}
                 orgId={orgId}
+
+            />
+
+            {/* Image Dialog (Lightbox) */}
+            <ImageDialog
+                isOpen={!!clickedImage}
+                imageUrl={clickedImage || ''}
+                onClose={() => setClickedImage(null)}
             />
 
         </div>
