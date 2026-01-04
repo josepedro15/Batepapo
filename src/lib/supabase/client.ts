@@ -11,5 +11,11 @@ export function createClient() {
     )
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey)
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  })
 }
