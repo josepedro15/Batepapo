@@ -132,6 +132,15 @@ export function ChatInterface({
         }
     }
 
+    // Automatic Sync on Mount (once)
+    useEffect(() => {
+        // Run sync after a short delay to let initial chats load
+        const timer = setTimeout(() => {
+            syncProfilePictures()
+        }, 2000)
+        return () => clearTimeout(timer)
+    }, [])
+
     const getOriginalTab = (contactId: string) => {
         if (initialMyChats?.find(c => c.id === contactId)) return 'mine'
         if (initialAwaitingChats?.find(c => c.id === contactId)) return 'awaiting'
@@ -146,20 +155,13 @@ export function ChatInterface({
             {/* LEFT SIDEBAR: Contact List */}
             <div className="w-80 flex flex-col border-r border-white/5 bg-slate-900/30">
                 {/* Header with New Chat button */}
-                <div className="p-3 border-b border-white/5 flex gap-2">
+                <div className="p-3 border-b border-white/5">
                     <button
                         onClick={() => setShowNewChatDialog(true)}
-                        className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                     >
                         <Plus className="h-4 w-4" />
                         Nova Conversa
-                    </button>
-                    <button
-                        onClick={handleSyncPhotos}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white p-2.5 rounded-xl transition-colors"
-                        title="Sincronizar Fotos de Perfil"
-                    >
-                        <RefreshCw className="h-4 w-4" />
                     </button>
                 </div>
 

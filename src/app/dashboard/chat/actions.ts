@@ -403,16 +403,35 @@ export async function syncProfilePictures() {
 
         // 4. Update local contacts
         let updatedCount = 0
+        const allDbPhones = await supabase
+            .from('contacts')
+            .select('id, phone')
+            .eq('organization_id', orgId)
+
+        console.log(`Matching against ${allDbPhones.data?.length} contacts in DB`)
+
         for (const waContact of waContacts) {
             if (waContact.profilePicUrl) {
-                const phone = `+${waContact.phone.replace(/\D/g, '')}`
-                const { error: updateError } = await supabase
-                    .from('contacts')
-                    .update({ avatar_url: waContact.profilePicUrl })
-                    .eq('organization_id', orgId)
-                    .eq('phone', phone)
+                const digits = waContact.phone.replace(/\D/g, '')
 
-                if (!updateError) updatedCount++
+                // Try to find matching contact in our DB (flexible match)
+                const matched = allDbPhones.data?.find(c =>
+                    c.phone.replace(/\D/g, '') === digits ||
+                    c.phone.replace(/\D/g, '').endsWith(digits) ||
+                    digits.endsWith(c.phone.replace(/\D/g, ''))
+                )
+
+                if (matched) {
+                    console.log(`Matched ${waContact.name} (${digits}) -> ${matched.id}`)
+                    const { error: updateError } = await supabase
+                        .from('contacts')
+                        .update({ avatar_url: waContact.profilePicUrl })
+                        .eq('id', matched.id)
+
+                    if (!updateError) updatedCount++
+                } else {
+                    console.log(`No match for ${waContact.name} (${digits})`)
+                }
             }
         }
 
