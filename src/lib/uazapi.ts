@@ -266,9 +266,13 @@ export async function sendMedia(
         },
         body: JSON.stringify({
             number: phone.replace(/\D/g, ''),
+            phone: phone.replace(/\D/g, ''), // Redundant for compatibility
             type,
             file: fileUrl,
-            text: caption
+            url: fileUrl, // Redundant for compatibility
+            media: fileUrl, // Redundant for compatibility
+            text: caption,
+            caption: caption // Redundant for compatibility
         })
     })
 
