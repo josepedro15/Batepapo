@@ -53,38 +53,26 @@ export function ChatInterface({
             setMessages(msgs || [])
         })
 
-        // 2. Subscribe to new messages using broadcast (simpler, bypasses RLS issues)
-        console.log('Setting up Realtime subscription for contact:', selectedContact.id)
-
-        const channel = supabase
-            .channel(`messages-${selectedContact.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages'
-                    // Removed filter to test if that's causing the issue
-                },
-                (payload) => {
-                    console.log('Realtime message received:', payload)
-                    // Only add if it's for this contact
-                    const newMessage = payload.new as Message & { contact_id: string }
-                    if (newMessage.contact_id === selectedContact.id) {
-                        setMessages(prev => [...prev, newMessage])
-                    }
+        // 2. Polling fallback (since Realtime has connection issues)
+        // Refresh messages every 3 seconds
+        const pollInterval = setInterval(() => {
+            getMessages(selectedContact.id).then(newMsgs => {
+                if (newMsgs && newMsgs.length > 0) {
+                    setMessages(prev => {
+                        // Only update if there are new messages
+                        if (newMsgs.length !== prev.length) {
+                            return newMsgs
+                        }
+                        return prev
+                    })
                 }
-            )
-            .subscribe((status, err) => {
-                console.log('Realtime subscription status:', status)
-                if (err) console.error('Realtime error:', err)
             })
+        }, 3000)
 
         return () => {
-            console.log('Removing Realtime channel')
-            supabase.removeChannel(channel)
+            clearInterval(pollInterval)
         }
-    }, [selectedContact, supabase])
+    }, [selectedContact])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
