@@ -412,36 +412,43 @@ export async function syncProfilePictures() {
 
         logs.push(`Found ${waContacts.length} contacts on WhatsApp`)
         if (waContacts.length > 0) {
-            // DEBUG: Log the first contact to see available fields
             logs.push(`🔍 Raw First Contact: ${JSON.stringify(waContacts[0])}`)
         }
         logs.push(`Found ${allDbPhones.data?.length} contacts in DB`)
 
         for (const waContact of waContacts) {
-            if (waContact.profilePicUrl) {
-                const digits = waContact.phone.replace(/\D/g, '')
+            const digits = waContact.phone.replace(/\D/g, '')
 
-                // Try to find matching contact in our DB (flexible match)
-                const matched = allDbPhones.data?.find(c => {
-                    const dbDigits = c.phone.replace(/\D/g, '')
-                    return dbDigits === digits ||
-                        dbDigits.endsWith(digits) ||
-                        digits.endsWith(dbDigits)
-                })
+            // Try to find matching contact in our DB
+            const matched = allDbPhones.data?.find(c => {
+                const dbDigits = c.phone.replace(/\D/g, '')
+                return dbDigits === digits ||
+                    dbDigits.endsWith(digits) ||
+                    digits.endsWith(dbDigits)
+            })
 
-                if (matched) {
-                    logs.push(`✓ Matched ${waContact.name} (${digits}) -> ${matched.name}`)
+            if (matched) {
+                let avatarUrl = waContact.profilePicUrl
+
+                // If no avatar in list, try explicit fetch
+                if (!avatarUrl) {
+                    try {
+                        // logs.push(`Fetching profile pic for ${matched.name}...`)
+                        avatarUrl = await uazapi.fetchProfilePicture(instance.instance_token, matched.phone) || undefined
+                    } catch (err) {
+                        // Ignore error
+                    }
+                }
+
+                if (avatarUrl) {
+                    logs.push(`✓ Updating ${matched.name} with ${avatarUrl.substring(0, 30)}...`)
                     const { error: updateError } = await supabase
                         .from('contacts')
-                        .update({ avatar_url: waContact.profilePicUrl })
+                        .update({ avatar_url: avatarUrl })
                         .eq('id', matched.id)
 
                     if (!updateError) updatedCount++
-                } else {
-                    // logs.push(`✗ No match for ${waContact.name} (${digits})`) // Too verbose
                 }
-            } else {
-                // logs.push(`⚠️ No photo for ${waContact.name}`)
             }
         }
 

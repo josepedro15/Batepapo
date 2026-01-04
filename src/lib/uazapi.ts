@@ -313,3 +313,33 @@ export async function getContacts(instanceToken: string): Promise<WhatsAppContac
         .slice(0, 100) // Limit to 100 contacts
 }
 
+/**
+ * Fetch profile picture for a specific phone number
+ * POST /misc/downProfile
+ */
+export async function fetchProfilePicture(
+    instanceToken: string,
+    phone: string
+): Promise<string | null> {
+    try {
+        const response = await fetch(`${UAZAPI_BASE_URL}/misc/downProfile`, {
+            method: 'POST',
+            headers: {
+                'token': instanceToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                phone: phone.replace(/\D/g, '')
+            })
+        })
+
+        if (!response.ok) return null
+
+        const data = await response.json()
+        return data.url || data.link || data.profilePic || null
+    } catch (error) {
+        console.error('Error fetching profile picture:', error)
+        return null
+    }
+}
+
