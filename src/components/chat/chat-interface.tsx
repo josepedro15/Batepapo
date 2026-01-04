@@ -10,6 +10,7 @@ import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
 import { toast } from 'sonner'
 import { ImageDialog } from '@/components/dialogs/image-dialog'
+import MicRecorder from 'mic-recorder-to-mp3'
 
 // Types (simplified for this file)
 type Contact = { id: string; name: string; phone: string; tags: string[] | null; last_message_at?: string; avatar_url?: string }
@@ -54,8 +55,7 @@ export function ChatInterface({
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
     const [clickedImage, setClickedImage] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-    const chunksRef = useRef<Blob[]>([])
+    const recorderRef = useRef<MicRecorder | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -66,27 +66,10 @@ export function ChatInterface({
     // Media Handlers
     const startRecording = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const mediaRecorder = new MediaRecorder(stream)
-            mediaRecorderRef.current = mediaRecorder
-            chunksRef.current = []
+            const recorder = new MicRecorder({ bitRate: 128 })
+            recorderRef.current = recorder
 
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data)
-            }
-
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/ogg; codecs=opus' })
-                const file = new File([blob], 'recording.ogg', { type: 'audio/ogg' })
-                setMediaFiles(prev => [...prev, {
-                    file,
-                    preview: URL.createObjectURL(blob),
-                    type: 'audio'
-                }])
-                stream.getTracks().forEach(track => track.stop())
-            }
-
-            mediaRecorder.start()
+            await recorder.start()
             setIsRecording(true)
         } catch (err) {
             console.error('Error accessing microphone:', err)
@@ -95,8 +78,23 @@ export function ChatInterface({
     }
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop()
+        if (recorderRef.current && isRecording) {
+            recorderRef.current
+                .stop()
+                .getMp3()
+                .then(([buffer, blob]) => {
+                    const file = new File(buffer, 'recording.mp3', { type: 'audio/mp3' })
+                    setMediaFiles(prev => [...prev, {
+                        file,
+                        preview: URL.createObjectURL(blob),
+                        type: 'audio'
+                    }])
+                })
+                .catch((e: Error) => {
+                    console.error('Mp3 conversion failed', e)
+                    toast.error('Erro ao processar áudio')
+                })
+
             setIsRecording(false)
         }
     }
