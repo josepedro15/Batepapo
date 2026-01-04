@@ -142,6 +142,11 @@ export function ChatInterface({
                 console.log('✅ Sync result:', result)
                 if (result.success) {
                     console.log(`📸 Updated ${result.updatedCount} profile pictures`)
+                    if (result.logs && result.logs.length > 0) {
+                        console.groupCollapsed('📝 Sync Details')
+                        console.log(result.logs.join('\n'))
+                        console.groupEnd()
+                    }
                 } else {
                     console.warn('⚠️ Sync failed:', result.error)
                 }

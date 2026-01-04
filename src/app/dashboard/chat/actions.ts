@@ -433,23 +433,28 @@ export async function syncProfilePictures() {
 
             if (waMatch && waMatch.profilePicUrl) {
                 avatarUrl = waMatch.profilePicUrl
-                // logs.push(`Found in list: ${dbContact.name}`)
+                logs.push(`Found in list: ${dbContact.name}`)
             }
 
             // Strategy B: Fetch individual profile picture (fallback)
             if (!avatarUrl) {
                 try {
-                    // logs.push(`Fetching specific: ${dbContact.name}...`)
+                    logs.push(`Fetching specific for ${dbContact.name} (${dbDigits})...`)
                     const fetchedUrl = await uazapi.fetchProfilePicture(instance.instance_token, dbContact.phone)
-                    if (fetchedUrl) avatarUrl = fetchedUrl
-                } catch (err) {
-                    // logs.push(`Error fetching for ${dbContact.name}`)
+                    if (fetchedUrl) {
+                        avatarUrl = fetchedUrl
+                        logs.push(`✓ Got URL: ${fetchedUrl.substring(0, 20)}...`)
+                    } else {
+                        logs.push(`✗ No URL returned for ${dbDigits}`)
+                    }
+                } catch (err: any) {
+                    logs.push(`Error fetching for ${dbContact.name}: ${err.message}`)
                 }
             }
 
             // Update if we found a photo
             if (avatarUrl) {
-                logs.push(`✓ Updating ${dbContact.name}`)
+                logs.push(`✓ Updating DB for ${dbContact.name}`)
                 const { error: updateError } = await supabase
                     .from('contacts')
                     .update({ avatar_url: avatarUrl })
