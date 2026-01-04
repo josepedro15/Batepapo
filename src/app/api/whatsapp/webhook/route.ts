@@ -19,6 +19,7 @@ interface UazapiWebhookPayload {
         messageType?: string // "ExtendedTextMessage", etc.
         senderName?: string
         sender?: string
+        senderPhoto?: string  // Potential field for profile picture
         content?: {
             text?: string
         }
@@ -32,6 +33,7 @@ interface UazapiWebhookPayload {
         phone?: string
         wa_chatid?: string
         wa_contactName?: string
+        profilePicUrl?: string // Field for profile picture
     }
 
     // Legacy format support (for connection events)
@@ -217,6 +219,7 @@ export async function POST(request: NextRequest) {
                             organization_id: organizationId,
                             phone: rawPhone,
                             name: contactName,
+                            avatar_url: msg.senderPhoto || chat?.profilePicUrl || null,
                             status: 'open'
                         })
                         .select('id')
@@ -229,6 +232,15 @@ export async function POST(request: NextRequest) {
                     contactId = newContact.id
                     console.log('Created new contact:', contactId)
                 }
+            }
+
+            // Update avatar_url if provided and different
+            const newAvatarUrl = msg.senderPhoto || chat?.profilePicUrl
+            if (newAvatarUrl && contactId) {
+                await supabase
+                    .from('contacts')
+                    .update({ avatar_url: newAvatarUrl })
+                    .eq('id', contactId)
             }
 
             // Extract message text

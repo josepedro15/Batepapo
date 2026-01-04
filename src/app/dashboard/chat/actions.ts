@@ -373,3 +373,53 @@ export async function toggleReminder(reminderId: string, completed: boolean) {
     await supabase.from('reminders').update({ completed }).eq('id', reminderId)
     revalidatePath('/dashboard/chat')
 }
+
+export async function syncProfilePictures() {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('Unauthorized')
+
+        // 1. Get Org ID
+        const { data: member } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
+        if (!member) throw new Error('Organization not found')
+        const orgId = member.organization_id
+
+        // 2. Get instance token
+        const { data: instance } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_token')
+            .eq('organization_id', orgId)
+            .eq('status', 'connected')
+            .single()
+
+        if (!instance) {
+            return { error: 'WhatsApp não está conectado' }
+        }
+
+        // 3. Fetch contacts from UAZAPI
+        const waContacts = await uazapi.getContacts(instance.instance_token)
+        console.log(`Syncing profile pictures for ${waContacts.length} contacts`)
+
+        // 4. Update local contacts
+        let updatedCount = 0
+        for (const waContact of waContacts) {
+            if (waContact.profilePicUrl) {
+                const phone = `+${waContact.phone.replace(/\D/g, '')}`
+                const { error: updateError } = await supabase
+                    .from('contacts')
+                    .update({ avatar_url: waContact.profilePicUrl })
+                    .eq('organization_id', orgId)
+                    .eq('phone', phone)
+
+                if (!updateError) updatedCount++
+            }
+        }
+
+        revalidatePath('/dashboard/chat')
+        return { success: true, updatedCount }
+    } catch (e: any) {
+        console.error('Error in syncProfilePictures:', e)
+        return { error: e.message || 'Unknown error' }
+    }
+}

@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -118,6 +118,20 @@ export function ChatInterface({
         }
     }
 
+    const handleSyncPhotos = async () => {
+        const loadingToast = toast.loading('Sincronizando fotos de perfil...')
+        try {
+            const result = await syncProfilePictures()
+            if (result.success) {
+                toast.success(`Sincronização concluída! ${result.updatedCount} fotos atualizadas.`, { id: loadingToast })
+            } else {
+                toast.error(result.error || 'Erro ao sincronizar fotos', { id: loadingToast })
+            }
+        } catch (error) {
+            toast.error('Erro inesperado ao sincronizar fotos', { id: loadingToast })
+        }
+    }
+
     const getOriginalTab = (contactId: string) => {
         if (initialMyChats?.find(c => c.id === contactId)) return 'mine'
         if (initialAwaitingChats?.find(c => c.id === contactId)) return 'awaiting'
@@ -132,13 +146,20 @@ export function ChatInterface({
             {/* LEFT SIDEBAR: Contact List */}
             <div className="w-80 flex flex-col border-r border-white/5 bg-slate-900/30">
                 {/* Header with New Chat button */}
-                <div className="p-3 border-b border-white/5">
+                <div className="p-3 border-b border-white/5 flex gap-2">
                     <button
                         onClick={() => setShowNewChatDialog(true)}
-                        className="w-full bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                        className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                     >
                         <Plus className="h-4 w-4" />
                         Nova Conversa
+                    </button>
+                    <button
+                        onClick={handleSyncPhotos}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white p-2.5 rounded-xl transition-colors"
+                        title="Sincronizar Fotos de Perfil"
+                    >
+                        <RefreshCw className="h-4 w-4" />
                     </button>
                 </div>
 
