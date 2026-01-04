@@ -247,8 +247,42 @@ export async function sendTextMessage(
 }
 
 /**
- * Send image message
- * POST /message/image
+ * Send media (image, video, audio, document)
+ * POST /send/media
+ * Unified endpoint for all media types
+ */
+export async function sendMedia(
+    instanceToken: string,
+    phone: string,
+    type: 'image' | 'video' | 'audio' | 'ptt' | 'document',
+    fileUrl: string,
+    caption?: string
+): Promise<{ messageId: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/send/media`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            number: phone.replace(/\D/g, ''),
+            type,
+            file: fileUrl,
+            text: caption
+        })
+    })
+
+    if (!response.ok) {
+        const errorText = await response.text()
+        console.error('UAZAPI send/media error:', errorText)
+        throw new Error(`Failed to send ${type}: ${errorText}`)
+    }
+
+    return response.json()
+}
+
+/**
+ * Send image message (wrapper for sendMedia)
  */
 export async function sendImageMessage(
     instanceToken: string,
@@ -256,52 +290,18 @@ export async function sendImageMessage(
     imageUrl: string,
     caption?: string
 ): Promise<{ messageId: string }> {
-    const response = await fetch(`${UAZAPI_BASE_URL}/message/image`, {
-        method: 'POST',
-        headers: {
-            'token': instanceToken,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            phone: phone.replace(/\D/g, ''),
-            url: imageUrl,
-            caption
-        })
-    })
-
-    if (!response.ok) {
-        throw new Error('Failed to send image')
-    }
-
-    return response.json()
+    return sendMedia(instanceToken, phone, 'image', imageUrl, caption)
 }
 
 /**
- * Send voice message (PTT)
- * POST /message/voice
+ * Send voice message (PTT) (wrapper for sendMedia)
  */
 export async function sendVoiceMessage(
     instanceToken: string,
     phone: string,
     audioUrl: string
 ): Promise<{ messageId: string }> {
-    const response = await fetch(`${UAZAPI_BASE_URL}/message/voice`, {
-        method: 'POST',
-        headers: {
-            'token': instanceToken,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            phone: phone.replace(/\D/g, ''),
-            url: audioUrl
-        })
-    })
-
-    if (!response.ok) {
-        throw new Error('Failed to send voice message')
-    }
-
-    return response.json()
+    return sendMedia(instanceToken, phone, 'ptt', audioUrl)
 }
 
 /**
