@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import * as uazapi from '@/lib/uazapi'
 
 // Types for ACTUAL UAZAPI webhook payloads (discovered from real data)
 interface UazapiWebhookPayload {
@@ -257,9 +258,45 @@ export async function POST(request: NextRequest) {
 
             // Handle Audio/PTT
             if (msg.mediaType === 'ptt' || msg.mediaType === 'audio' || msg.type === 'audio') {
-                mediaUrl = msg.content?.URL || msg.content?.url
-                mediaType = 'audio'
-                console.log('Audio message detected:', mediaUrl)
+                console.log('Audio message detected. Proceeding to download...')
+                try {
+                    // 1. Download Base64 from UAZAPI
+                    const media = await uazapi.downloadMedia(instanceToken as string, messageId as string)
+
+                    if (media && media.base64) {
+                        // 2. Convert Base64 to Buffer
+                        const buffer = Buffer.from(media.base64, 'base64')
+                        const fileName = `${contactId}/${messageId}.${media.mimeType.split('/')[1] || 'ogg'}`
+
+                        // 3. Upload to Supabase Storage
+                        // Use admin client for storage upload
+                        const { data: uploadData, error: uploadError } = await supabase
+                            .storage
+                            .from('chat-media')
+                            .upload(fileName, buffer, {
+                                contentType: media.mimeType,
+                                upsert: true
+                            })
+
+                        if (uploadError) {
+                            console.error('Error uploading audio to storage:', uploadError)
+                        } else {
+                            // 4. Get Public URL
+                            const { data: publicUrlData } = supabase
+                                .storage
+                                .from('chat-media')
+                                .getPublicUrl(fileName)
+
+                            mediaUrl = publicUrlData.publicUrl
+                            mediaType = 'audio'
+                            console.log('✅ Audio uploaded to:', mediaUrl)
+                        }
+                    } else {
+                        console.error('Failed to download media form UAZAPI')
+                    }
+                } catch (err: any) {
+                    console.error('Error processing audio:', err)
+                }
             }
 
             // Save message (messageId already defined above for dedup check)
