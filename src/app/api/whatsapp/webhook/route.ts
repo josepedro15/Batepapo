@@ -256,9 +256,9 @@ export async function POST(request: NextRequest) {
             let mediaUrl = null
             let mediaType = null
 
-            // Handle Audio/PTT
-            if (msg.mediaType === 'ptt' || msg.mediaType === 'audio' || msg.type === 'audio') {
-                console.log('Audio message detected. Proceeding to download...')
+            // Handle Media (Audio/Image)
+            if (['ptt', 'audio', 'image'].includes(msg.mediaType || '') || msg.type === 'audio' || msg.type === 'image') {
+                console.log(`Media message detected (${msg.mediaType}). Proceeding to download...`)
                 try {
                     // 1. Download Base64 from UAZAPI
                     // Use msg.id (long ID) as n8n does
@@ -267,7 +267,14 @@ export async function POST(request: NextRequest) {
                     if (media && media.base64 && media.base64.length > 100) {
                         // 2. Convert Base64 to Buffer
                         const buffer = Buffer.from(media.base64, 'base64')
-                        const fileName = `${contactId}/${messageId}.${media.mimeType.split('/')[1] || 'ogg'}`
+
+                        // Determine extension
+                        let ext = media.mimeType.split('/')[1] || 'ogg'
+                        if (msg.mediaType === 'image') {
+                            ext = 'jpeg'
+                        }
+
+                        const fileName = `${contactId}/${messageId}.${ext}`
 
                         // 3. Upload to Supabase Storage
                         // Use admin client for storage upload
@@ -280,7 +287,7 @@ export async function POST(request: NextRequest) {
                             })
 
                         if (uploadError) {
-                            console.error('Error uploading audio to storage:', uploadError)
+                            console.error('Error uploading media to storage:', uploadError)
                         } else {
                             // 4. Get Public URL
                             const { data: publicUrlData } = supabase
@@ -289,15 +296,22 @@ export async function POST(request: NextRequest) {
                                 .getPublicUrl(fileName)
 
                             mediaUrl = publicUrlData.publicUrl
-                            mediaType = 'audio'
-                            console.log('✅ Audio uploaded to:', mediaUrl)
+                            mediaType = msg.mediaType === 'ptt' ? 'audio' : msg.mediaType
+                            console.log(`✅ Media (${mediaType}) uploaded to:`, mediaUrl)
                         }
                     } else {
                         console.error('Failed to download media form UAZAPI (empty or null)')
                     }
                 } catch (err: any) {
-                    console.error('Error processing audio:', err)
+                    console.error('Error processing media:', err)
                 }
+            }
+
+            // Determine body text fallback
+            let bodyContent = messageText
+            if (!bodyContent) {
+                if (mediaType === 'audio') bodyContent = 'Áudio'
+                else if (mediaType === 'image') bodyContent = 'Imagem'
             }
 
             // Save message (messageId already defined above for dedup check)
@@ -308,7 +322,7 @@ export async function POST(request: NextRequest) {
                     organization_id: organizationId,
                     contact_id: contactId,
                     sender_type: isFromMe ? 'user' : 'contact',
-                    body: messageText || (mediaType === 'audio' ? 'Áudio' : null),
+                    body: bodyContent,
                     media_url: mediaUrl,
                     media_type: mediaType,
                     status: isFromMe ? 'sent' : 'received',

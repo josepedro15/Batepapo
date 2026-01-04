@@ -377,6 +377,18 @@ export function ChatInterface({
                                                 </div>
                                             )}
 
+                                            {message.media_type === 'image' && message.media_url && (
+                                                <div className="mt-2 mb-1">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={message.media_url}
+                                                        alt="Imagem"
+                                                        className="rounded-lg max-w-[250px] max-h-[300px] object-cover border border-white/10"
+                                                        loading="lazy"
+                                                    />
+                                                </div>
+                                            )}
+
                                             <div className="flex items-center justify-end gap-1 mt-1"></div>
                                         </div>
                                     </div>
