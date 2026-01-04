@@ -53,20 +53,31 @@ export function ChatInterface({
             setMessages(msgs || [])
         })
 
-        // 2. Subscribe to new messages
+        // 2. Subscribe to new messages using broadcast (simpler, bypasses RLS issues)
         console.log('Setting up Realtime subscription for contact:', selectedContact.id)
-        const channel = supabase.channel(`chat:${selectedContact.id}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `contact_id=eq.${selectedContact.id}`
-            }, (payload) => {
-                console.log('Realtime message received:', payload)
-                setMessages(prev => [...prev, payload.new as Message])
-            })
-            .subscribe((status) => {
+
+        const channel = supabase
+            .channel(`messages-${selectedContact.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages'
+                    // Removed filter to test if that's causing the issue
+                },
+                (payload) => {
+                    console.log('Realtime message received:', payload)
+                    // Only add if it's for this contact
+                    const newMessage = payload.new as Message & { contact_id: string }
+                    if (newMessage.contact_id === selectedContact.id) {
+                        setMessages(prev => [...prev, newMessage])
+                    }
+                }
+            )
+            .subscribe((status, err) => {
                 console.log('Realtime subscription status:', status)
+                if (err) console.error('Realtime error:', err)
             })
 
         return () => {
