@@ -76,8 +76,8 @@ export function ChatInterface({
             }
 
             mediaRecorder.onstop = () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-                const file = new File([blob], 'recording.webm', { type: 'audio/webm' })
+                const blob = new Blob(chunksRef.current, { type: 'audio/ogg; codecs=opus' })
+                const file = new File([blob], 'recording.ogg', { type: 'audio/ogg' })
                 setMediaFiles(prev => [...prev, {
                     file,
                     preview: URL.createObjectURL(blob),
