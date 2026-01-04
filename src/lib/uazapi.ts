@@ -340,83 +340,48 @@ export async function fetchProfilePicture(
             })
         })
 
+    } catch (error) {
+        console.error('Error fetching profile picture:', error)
+        return null
+    }
+    return null
+}
+
+/**
+ * Download media as Base64
+ * POST /message/download
+ */
+export async function downloadMedia(
+    instanceToken: string,
+    messageId: string
+): Promise<{ base64: string; mimeType: string } | null> {
+    try {
+        const response = await fetch(`${UAZAPI_BASE_URL}/message/download`, {
+            method: 'POST',
+            headers: {
+                'token': instanceToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: messageId,
+                return_base64: true
+            })
+        })
+
         if (!response.ok) return null
 
         const data = await response.json()
-        return data.url || data.link || data.profilePic || null
-        /**
-         * Download media as Base64
-         * POST /message/download
-         */
-        export async function downloadMedia(
-            instanceToken: string,
-            messageId: string
-        ): Promise<{ base64: string; mimeType: string } | null> {
-            try {
-                const response = await fetch(`${UAZAPI_BASE_URL}/message/download`, {
-                    method: 'POST',
-                    headers: {
-                        'token': instanceToken,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        id: messageId,
-                        return_base64: true
-                    })
-                })
 
-                if (!response.ok) return null
-
-                const data = await response.json()
-
-                // The API returns { "data": "base64string", "mimetype": "audio/ogg" } or similar
-                // Based on n8n node, we expect the body to contain the data.
-                // Let's assume standard response format. 
-                // If the user didn't specify the response format, we assume it has 'data' or 'base64'.
-                // For safety, I'll log what it returns if it fails.
-
-                // The API returns { "data": "base64string", "mimetype": "audio/ogg" } or similar
-            } catch (error) {
-                console.error('Error fetching profile picture:', error)
-                return null
-            }
+        // The API returns { "data": "base64string", "mimetype": "audio/ogg" } or similar
+        // Based on n8n node, we expect the body to contain the data.
+        // If the user didn't specify the response format, we assume it has 'data' or 'base64'.
+        // For safety, I'll log what it returns if it fails.
+        return {
+            base64: data.data || data.base64 || data.content,
+            mimeType: data.mimetype || data.mimeType || 'audio/ogg'
         }
-
-        /**
-         * Download media as Base64
-         * POST /message/download
-         */
-        export async function downloadMedia(
-            instanceToken: string,
-            messageId: string
-        ): Promise<{ base64: string; mimeType: string } | null> {
-            try {
-                const response = await fetch(`${UAZAPI_BASE_URL}/message/download`, {
-                    method: 'POST',
-                    headers: {
-                        'token': instanceToken,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        id: messageId,
-                        return_base64: true
-                    })
-                })
-
-                if (!response.ok) return null
-
-                const data = await response.json()
-
-                // The API returns { "data": "base64string", "mimetype": "audio/ogg" } or similar
-                // Based on n8n node, we expect the body to contain the data.
-                // If the user didn't specify the response format, we assume it has 'data' or 'base64'.
-                // For safety, I'll log what it returns if it fails.
-                return {
-                    base64: data.data || data.base64 || data.content,
-                    mimeType: data.mimetype || data.mimeType || 'audio/ogg'
-                }
-            } catch (error) {
-                console.error('Error downloading media:', error)
-                return null
-            }
-        }
+    } catch (error) {
+        console.error('Error downloading media:', error)
+        return null
+    }
+}
