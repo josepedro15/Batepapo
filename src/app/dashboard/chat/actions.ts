@@ -148,14 +148,19 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
 
     if (!file) throw new Error('No file provided')
 
+    // Convert File to ArrayBuffer for server-side upload
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
     // 1. Upload to Supabase Storage
-    const ext = file.name.split('.').pop()
+    const ext = file.name.split('.').pop() || (mediaType === 'image' ? 'jpg' : 'webm')
     const fileName = `${contactId}/${Date.now()}.${ext}`
 
     const { error: uploadError } = await supabase
         .storage
         .from('chat-media')
-        .upload(fileName, file, {
+        .upload(fileName, buffer, {
+            contentType: file.type,
             upsert: true
         })
 
