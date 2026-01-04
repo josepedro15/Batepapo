@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function getChatData() {
@@ -139,6 +140,7 @@ export async function sendMessage(contactId: string, body: string, orgId: string
 }
 
 export async function sendMedia(contactId: string, formData: FormData, orgId: string) {
+    console.log('[sendMedia] Starting media send...')
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
@@ -152,11 +154,16 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // 1. Upload to Supabase Storage
+    // 1. Upload to Supabase Storage (Using Admin Client to bypass RLS)
+    const adminSupabase = createAdminClient()
+    if (!adminSupabase) throw new Error('Server misconfiguration: No Admin Client')
+
     const ext = file.name.split('.').pop() || (mediaType === 'image' ? 'jpg' : 'webm')
     const fileName = `${contactId}/${Date.now()}.${ext}`
 
-    const { error: uploadError } = await supabase
+    console.log('[sendMedia] Uploading to storage:', fileName)
+
+    const { error: uploadError } = await adminSupabase
         .storage
         .from('chat-media')
         .upload(fileName, buffer, {
@@ -164,7 +171,10 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
             upsert: true
         })
 
-    if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
+    if (uploadError) {
+        console.error('[sendMedia] Upload error:', uploadError)
+        throw new Error(`Upload failed: ${uploadError.message}`)
+    }
 
     // 2. Get Public URL
     const { data: publicUrlData } = supabase
@@ -173,6 +183,7 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
         .getPublicUrl(fileName)
 
     const mediaUrl = publicUrlData.publicUrl
+    console.log('[sendMedia] Public URL generated:', mediaUrl)
 
     // 3. Insert message with 'sending' status
     const { data: msg, error: msgError } = await supabase.from('messages').insert({
@@ -187,11 +198,13 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
     }).select('id').single()
 
     if (msgError) throw new Error(msgError.message)
+    console.log('[sendMedia] DB record created:', msg.id)
 
     revalidatePath('/dashboard/chat')
 
     // 4. Send via UAZAPI
     try {
+        console.log('[sendMedia] Sending to UAZAPI...')
         // Get contact details
         const { data: contact } = await supabase
             .from('contacts')
@@ -226,6 +239,8 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
             )
         }
 
+        console.log('[sendMedia] UAZAPI success:', response)
+
         // Update status to 'sent'
         await supabase
             .from('messages')
@@ -236,15 +251,20 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
             .eq('id', msg.id)
 
     } catch (e: any) {
-        console.error('Failed to send media:', e)
+        console.error('[sendMedia] Failed to send to UAZAPI:', e)
         await supabase
             .from('messages')
             .update({ status: 'failed' })
             .eq('id', msg.id)
+
+        // Re-throw to inform UI
+        throw e
     }
 
     revalidatePath('/dashboard/chat')
 }
+
+
 
 export async function assignChat(contactId: string) {
     const supabase = await createClient()
