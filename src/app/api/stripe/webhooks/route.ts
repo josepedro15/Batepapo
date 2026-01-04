@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+    const adminClient = createAdminClient()
     if (!adminClient) return
 
     const userId = session.metadata?.supabase_user_id
@@ -144,6 +145,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function upsertSubscription(subscription: Stripe.Subscription) {
+    const adminClient = createAdminClient()
     if (!adminClient) return
 
     const userId = subscription.metadata?.supabase_user_id
@@ -181,6 +183,7 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
 }
 
 async function deleteSubscription(subscriptionId: string) {
+    const adminClient = createAdminClient()
     if (!adminClient) return
 
     await adminClient
