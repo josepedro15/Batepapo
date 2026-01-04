@@ -261,7 +261,7 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
         throw e
     }
 
-    revalidatePath('/dashboard/chat')
+    // revalidatePath('/dashboard/chat')
 }
 
 
