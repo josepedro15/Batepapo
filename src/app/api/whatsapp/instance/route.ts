@@ -3,18 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import * as uazapi from '@/lib/uazapi'
 
 // Helper to get base URL for webhook
-// IMPORTANT: Must use production URL, not preview URLs!
+// IMPORTANT: Always use production URL, not preview URLs!
 function getWebhookUrl(): string {
-  // 1. Use explicit app URL if set (should be production domain)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (appUrl) {
-    // Clean up URL and ensure production format
-    const cleanUrl = appUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
-    return `https://${cleanUrl}/api/whatsapp/webhook`
-  }
-
-  // 2. Hardcoded production fallback (VERCEL_URL gives preview URLs!)
-  // Update this if your production domain changes
+  // Always use production domain (Vercel VERCEL_URL gives preview URLs!)
   return 'https://crm-batepapo.vercel.app/api/whatsapp/webhook'
 }
 
