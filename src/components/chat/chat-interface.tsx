@@ -539,18 +539,16 @@ export function ChatInterface({
                                     {/* MIC BUTTON */}
                                     <button
                                         type="button"
-                                        onMouseDown={startRecording}
-                                        onMouseUp={stopRecording}
-                                        onMouseLeave={stopRecording} // Stop if drag out
+                                        onClick={isRecording ? stopRecording : startRecording}
                                         className={cn(
                                             "p-3 rounded-xl transition-colors mb-[1px]",
                                             isRecording
                                                 ? "bg-red-500/20 text-red-500 animate-pulse"
                                                 : "text-slate-400 hover:text-white hover:bg-white/10"
                                         )}
-                                        title="Gravar Áudio (Segure para gravar)"
+                                        title={isRecording ? "Parar gravação" : "Gravar Áudio"}
                                     >
-                                        <Mic className="h-5 w-5" />
+                                        {isRecording ? <div className="h-5 w-5 bg-current rounded-sm scale-50" /> : <Mic className="h-5 w-5" />}
                                     </button>
 
                                     {/* INPUT / PREVIEW AREA */}
