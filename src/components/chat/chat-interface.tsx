@@ -117,7 +117,7 @@ export function ChatInterface({
     }
 
     return (
-        <div className="flex h-[calc(100vh-4rem)] gap-6 rounded-2xl overflow-hidden glass border border-white/5">
+        <div className="flex h-full gap-6 rounded-2xl overflow-hidden glass border border-white/5">
 
             {/* LEFT SIDEBAR: Contact List */}
             <div className="w-80 flex flex-col border-r border-white/5 bg-slate-900/30">
