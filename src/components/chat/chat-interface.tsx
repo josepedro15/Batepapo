@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -47,10 +47,90 @@ export function ChatInterface({
     const [showTransferDialog, setShowTransferDialog] = useState(false)
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [showDetailsPanel, setShowDetailsPanel] = useState(true)
+
+    // Media State
+    const [isRecording, setIsRecording] = useState(false)
+    const [mediaFile, setMediaFile] = useState<{ file: File, preview: string, type: 'image' | 'audio' } | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+    const chunksRef = useRef<Blob[]>([])
+
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    // Media Handlers
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            const mediaRecorder = new MediaRecorder(stream)
+            mediaRecorderRef.current = mediaRecorder
+            chunksRef.current = []
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data)
+            }
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+                const file = new File([blob], 'recording.webm', { type: 'audio/webm' })
+                setMediaFile({
+                    file,
+                    preview: URL.createObjectURL(blob),
+                    type: 'audio'
+                })
+                stream.getTracks().forEach(track => track.stop())
+            }
+
+            mediaRecorder.start()
+            setIsRecording(true)
+        } catch (err) {
+            console.error('Error accessing microphone:', err)
+            toast.error('Erro ao acessar microfone')
+        }
+    }
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop()
+            setIsRecording(false)
+        }
+    }
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) {
+            if (file.type.startsWith('image/')) {
+                setMediaFile({
+                    file,
+                    preview: URL.createObjectURL(file),
+                    type: 'image'
+                })
+            } else {
+                toast.error('Apenas imagens são permitidas por enquanto (use o mic para áudio)')
+            }
+        }
+    }
+
+    const handleSendMedia = async () => {
+        if (!mediaFile || !selectedContact) return
+
+        const loadingId = toast.loading('Enviando mídia...')
+        try {
+            const formData = new FormData()
+            formData.append('file', mediaFile.file)
+            formData.append('type', mediaFile.type)
+
+            await sendMedia(selectedContact.id, formData, orgId)
+
+            setMediaFile(null)
+            toast.dismiss(loadingId)
+        } catch (error) {
+            console.error(error)
+            toast.error('Erro ao enviar mídia', { id: loadingId })
+        }
     }
 
     // Scroll of new messages
@@ -401,25 +481,100 @@ export function ChatInterface({
                         {activeTab === 'mine' ? (
                             <div className="p-4 bg-slate-900/50 border-t border-white/5">
                                 <form
-                                    className="flex gap-2"
+                                    className="flex gap-2 items-end"
                                     onSubmit={async (e) => {
                                         e.preventDefault()
-                                        if (!inputText.trim()) return
-
-                                        const messageBody = inputText
-                                        setInputText('')
-
-                                        // Send to DB + WhatsApp (all in server action)
-                                        await sendMessage(selectedContact.id, messageBody, orgId)
+                                        if (mediaFile) {
+                                            await handleSendMedia()
+                                        } else if (inputText.trim()) {
+                                            const messageBody = inputText
+                                            setInputText('')
+                                            await sendMessage(selectedContact.id, messageBody, orgId)
+                                        }
                                     }}
                                 >
                                     <input
-                                        value={inputText}
-                                        onChange={e => setInputText(e.target.value)}
-                                        placeholder="Digite sua mensagem..."
-                                        className="flex-1 bg-slate-800 border-none rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:ring-1 focus:ring-violet-500 outline-none"
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={handleFileSelect}
                                     />
-                                    <button type="submit" className="p-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition-colors">
+
+                                    {/* ATTACHMENT BUTTON */}
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="p-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors mb-[1px]"
+                                        title="Anexar Imagem"
+                                    >
+                                        <Paperclip className="h-5 w-5" />
+                                    </button>
+
+                                    {/* MIC BUTTON */}
+                                    <button
+                                        type="button"
+                                        onMouseDown={startRecording}
+                                        onMouseUp={stopRecording}
+                                        onMouseLeave={stopRecording} // Stop if drag out
+                                        className={cn(
+                                            "p-3 rounded-xl transition-colors mb-[1px]",
+                                            isRecording
+                                                ? "bg-red-500/20 text-red-500 animate-pulse"
+                                                : "text-slate-400 hover:text-white hover:bg-white/10"
+                                        )}
+                                        title="Gravar Áudio (Segure para gravar)"
+                                    >
+                                        <Mic className="h-5 w-5" />
+                                    </button>
+
+                                    {/* INPUT / PREVIEW AREA */}
+                                    <div className="flex-1 relative">
+                                        {mediaFile ? (
+                                            <div className="flex items-center gap-3 p-2 bg-slate-800 rounded-xl border border-violet-500/30">
+                                                {mediaFile.type === 'image' ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={mediaFile.preview} alt="Preview" className="h-10 w-10 object-cover rounded-lg" />
+                                                ) : (
+                                                    <div className="flex items-center gap-2 px-2">
+                                                        <Mic className="h-4 w-4 text-violet-400" />
+                                                        <span className="text-sm text-slate-300">Áudio gravado</span>
+                                                        <audio src={mediaFile.preview} controls className="h-8 w-24" />
+                                                    </div>
+                                                )}
+
+                                                <div className="flex-1" />
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMediaFile(null)}
+                                                    className="p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-red-400"
+                                                >
+                                                    <X className="h-5 w-5" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <input
+                                                value={inputText}
+                                                onChange={e => setInputText(e.target.value)}
+                                                placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
+                                                disabled={isRecording}
+                                                className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:ring-1 focus:ring-violet-500 outline-none"
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* SEND BUTTON */}
+                                    <button
+                                        type="submit"
+                                        disabled={!inputText.trim() && !mediaFile}
+                                        className={cn(
+                                            "p-3 rounded-xl transition-colors mb-[1px]",
+                                            (!inputText.trim() && !mediaFile)
+                                                ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                                                : "bg-violet-600 hover:bg-violet-700 text-white"
+                                        )}
+                                    >
                                         <Send className="h-5 w-5" />
                                     </button>
                                 </form>

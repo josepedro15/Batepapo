@@ -138,6 +138,109 @@ export async function sendMessage(contactId: string, body: string, orgId: string
     revalidatePath('/dashboard/chat')
 }
 
+export async function sendMedia(contactId: string, formData: FormData, orgId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+
+    const file = formData.get('file') as File
+    const mediaType = formData.get('type') as 'audio' | 'image'
+
+    if (!file) throw new Error('No file provided')
+
+    // 1. Upload to Supabase Storage
+    const ext = file.name.split('.').pop()
+    const fileName = `${contactId}/${Date.now()}.${ext}`
+
+    const { error: uploadError } = await supabase
+        .storage
+        .from('chat-media')
+        .upload(fileName, file, {
+            upsert: true
+        })
+
+    if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
+
+    // 2. Get Public URL
+    const { data: publicUrlData } = supabase
+        .storage
+        .from('chat-media')
+        .getPublicUrl(fileName)
+
+    const mediaUrl = publicUrlData.publicUrl
+
+    // 3. Insert message with 'sending' status
+    const { data: msg, error: msgError } = await supabase.from('messages').insert({
+        organization_id: orgId,
+        contact_id: contactId,
+        sender_type: 'user',
+        sender_id: user.id,
+        body: mediaType === 'audio' ? 'Áudio enviado' : 'Imagem enviada',
+        media_url: mediaUrl,
+        media_type: mediaType,
+        status: 'sending'
+    }).select('id').single()
+
+    if (msgError) throw new Error(msgError.message)
+
+    revalidatePath('/dashboard/chat')
+
+    // 4. Send via UAZAPI
+    try {
+        // Get contact details
+        const { data: contact } = await supabase
+            .from('contacts')
+            .select('phone')
+            .eq('id', contactId)
+            .single()
+
+        if (!contact) throw new Error('Contact not found')
+
+        const { data: instance } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_token, status')
+            .eq('organization_id', orgId)
+            .single()
+
+        if (!instance || instance.status !== 'connected') {
+            throw new Error('WhatsApp disconnected')
+        }
+
+        let response
+        if (mediaType === 'audio') {
+            response = await uazapi.sendVoiceMessage(
+                instance.instance_token,
+                contact.phone,
+                mediaUrl
+            )
+        } else {
+            response = await uazapi.sendImageMessage(
+                instance.instance_token,
+                contact.phone,
+                mediaUrl
+            )
+        }
+
+        // Update status to 'sent'
+        await supabase
+            .from('messages')
+            .update({
+                status: 'sent',
+                whatsapp_id: response.messageId
+            })
+            .eq('id', msg.id)
+
+    } catch (e: any) {
+        console.error('Failed to send media:', e)
+        await supabase
+            .from('messages')
+            .update({ status: 'failed' })
+            .eq('id', msg.id)
+    }
+
+    revalidatePath('/dashboard/chat')
+}
+
 export async function assignChat(contactId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

@@ -277,6 +277,34 @@ export async function sendImageMessage(
 }
 
 /**
+ * Send voice message (PTT)
+ * POST /message/voice
+ */
+export async function sendVoiceMessage(
+    instanceToken: string,
+    phone: string,
+    audioUrl: string
+): Promise<{ messageId: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/message/voice`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            phone: phone.replace(/\D/g, ''),
+            url: audioUrl
+        })
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to send voice message')
+    }
+
+    return response.json()
+}
+
+/**
  * Get WhatsApp contacts from the connected phone
  * GET /contacts
  */
