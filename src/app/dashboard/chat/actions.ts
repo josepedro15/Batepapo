@@ -411,6 +411,10 @@ export async function syncProfilePictures() {
             .eq('organization_id', orgId)
 
         logs.push(`Found ${waContacts.length} contacts on WhatsApp`)
+        if (waContacts.length > 0) {
+            // DEBUG: Log the first contact to see available fields
+            logs.push(`🔍 Raw First Contact: ${JSON.stringify(waContacts[0])}`)
+        }
         logs.push(`Found ${allDbPhones.data?.length} contacts in DB`)
 
         for (const waContact of waContacts) {
@@ -436,6 +440,8 @@ export async function syncProfilePictures() {
                 } else {
                     // logs.push(`✗ No match for ${waContact.name} (${digits})`) // Too verbose
                 }
+            } else {
+                // logs.push(`⚠️ No photo for ${waContact.name}`)
             }
         }
 
