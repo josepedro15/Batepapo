@@ -365,15 +365,8 @@ export function ChatInterface({
                                                 }
                                                 `}
                                         >
-                                            {message.body && message.media_type !== 'audio' && (
-                                                <div>
-                                                    <p>{message.body}</p>
-                                                    {message.media_type === 'image' && (
-                                                        <p className="text-xs opacity-50">
-                                                            Debug: {message.media_type} | {message.media_url ? 'HasURL' : 'NoURL'}
-                                                        </p>
-                                                    )}
-                                                </div>
+                                            {message.body && message.media_type !== 'audio' && message.media_type !== 'image' && (
+                                                <p>{message.body}</p>
                                             )}
 
                                             {message.media_type === 'audio' && message.media_url && (
