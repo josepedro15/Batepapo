@@ -66,19 +66,71 @@ export async function getMessages(contactId: string) {
     return data
 }
 
+import * as uazapi from '@/lib/uazapi'
+
 export async function sendMessage(contactId: string, body: string, orgId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
-    await supabase.from('messages').insert({
+    // 1. Get contact details
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('phone')
+        .eq('id', contactId)
+        .single()
+
+    if (!contact) throw new Error('Contact not found')
+
+    // 2. Insert message with 'sending' status
+    const { data: msg, error } = await supabase.from('messages').insert({
         organization_id: orgId,
         contact_id: contactId,
         sender_type: 'user',
         sender_id: user.id,
         body,
-        status: 'sent'
-    })
+        status: 'sending'
+    }).select('id').single()
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/chat')
+
+    // 3. Send via UAZAPI (async, don't block UI but wait for success to update status)
+    try {
+        const { data: instance } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_token, status')
+            .eq('organization_id', orgId)
+            .single()
+
+        if (!instance || instance.status !== 'connected') {
+            throw new Error('WhatsApp disconnected')
+        }
+
+        // Send text message
+        const response = await uazapi.sendTextMessage(
+            instance.instance_token,
+            contact.phone,
+            body
+        )
+
+        // Update status to 'sent'
+        await supabase
+            .from('messages')
+            .update({ status: 'sent' })
+            .eq('id', msg.id)
+
+    } catch (e: any) {
+        console.error('Failed to send message:', e)
+        // Update status to 'failed'
+        await supabase
+            .from('messages')
+            .update({ status: 'failed' })
+            .eq('id', msg.id)
+
+        // We don't throw error to UI to avoid crash, but UI will show failed status via Realtime/Refetch if implemented
+    }
 
     revalidatePath('/dashboard/chat')
 }

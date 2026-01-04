@@ -306,26 +306,11 @@ export function ChatInterface({
                                         e.preventDefault()
                                         if (!inputText.trim()) return
 
-                                        // Optimistic UI Update can go here
+                                        const messageBody = inputText
                                         setInputText('')
 
-                                        // Send to DB first (Realtime will update UI)
-                                        await sendMessage(selectedContact.id, inputText, orgId)
-
-                                        // Also send via WhatsApp
-                                        try {
-                                            await fetch('/api/whatsapp/send', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    contact_id: selectedContact.id,
-                                                    message: inputText,
-                                                    type: 'text'
-                                                })
-                                            })
-                                        } catch (e) {
-                                            console.error('WhatsApp send failed:', e)
-                                        }
+                                        // Send to DB + WhatsApp (all in server action)
+                                        await sendMessage(selectedContact.id, messageBody, orgId)
                                     }}
                                 >
                                     <input
