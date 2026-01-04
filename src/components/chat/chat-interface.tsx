@@ -124,27 +124,35 @@ export function ChatInterface({
         if (mediaFiles.length === 0 || !selectedContact) return
 
         const loadingId = toast.loading('Iniciando envio...')
-        try {
-            let count = 0
-            for (const media of mediaFiles) {
-                count++
-                toast.loading(`Enviando ${count} de ${mediaFiles.length}...`, { id: loadingId })
+        const failedFiles: typeof mediaFiles = []
+        let successCount = 0
 
+        for (let i = 0; i < mediaFiles.length; i++) {
+            const media = mediaFiles[i]
+            toast.loading(`Enviando ${i + 1} de ${mediaFiles.length}...`, { id: loadingId })
+
+            try {
                 const formData = new FormData()
                 formData.append('file', media.file)
                 formData.append('type', media.type)
 
                 await sendMedia(selectedContact.id, formData, orgId)
+                successCount++
+            } catch (error) {
+                console.error(`Falha ao enviar ${media.file.name}`, error)
+                failedFiles.push(media)
             }
+        }
 
+        if (failedFiles.length > 0) {
+            toast.error(`${failedFiles.length} arquivos falharam. Tente novamente.`, { id: loadingId })
+            setMediaFiles(failedFiles)
+        } else {
+            toast.success(`${successCount} arquivos enviados!`, { id: loadingId })
             setMediaFiles([])
-            toast.dismiss(loadingId)
-            toast.success('Mídia enviada!')
-        } catch (error) {
-            console.error(error)
-            toast.error('Erro ao enviar mídia', { id: loadingId })
         }
     }
+
 
     // Scroll of new messages
     useEffect(() => {
