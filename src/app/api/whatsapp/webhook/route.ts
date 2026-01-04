@@ -152,6 +152,21 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ success: true })
             }
 
+            // Deduplication: Check if message already exists
+            const messageId = msg.messageid || msg.id
+            if (messageId) {
+                const { data: existingMsg } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('whatsapp_id', messageId)
+                    .single()
+
+                if (existingMsg) {
+                    console.log('Duplicate message, skipping:', messageId)
+                    return NextResponse.json({ success: true })
+                }
+            }
+
             // Extract phone number from chatid
             const phoneFromChatId = msg.chatid.split('@')[0]
             const digits = phoneFromChatId.replace(/\D/g, '')
@@ -220,8 +235,8 @@ export async function POST(request: NextRequest) {
             const messageText = msg.text || msg.content?.text || ''
             const isFromMe = msg.fromMe || false
 
-            // Save message
-            console.log('Saving message:', { contactId, messageText, isFromMe })
+            // Save message (messageId already defined above for dedup check)
+            console.log('Saving message:', { contactId, messageText, isFromMe, messageId })
             const { error: msgError } = await supabase
                 .from('messages')
                 .insert({
@@ -229,7 +244,8 @@ export async function POST(request: NextRequest) {
                     contact_id: contactId,
                     sender_type: isFromMe ? 'user' : 'contact',
                     body: messageText || null,
-                    status: isFromMe ? 'sent' : 'received'
+                    status: isFromMe ? 'sent' : 'received',
+                    whatsapp_id: messageId || null
                 })
 
             if (msgError) {

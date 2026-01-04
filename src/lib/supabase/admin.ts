@@ -19,6 +19,3 @@ export function createAdminClient(): SupabaseClient | null {
         }
     })
 }
-
-export const adminAuthClient = createAdminClient()
-
