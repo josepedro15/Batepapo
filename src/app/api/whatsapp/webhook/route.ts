@@ -1,35 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Types for UAZAPI webhook payloads
-interface WebhookPayload {
+// Types for ACTUAL UAZAPI webhook payloads (discovered from real data)
+interface UazapiWebhookPayload {
+    BaseUrl?: string
+    EventType?: string  // "messages", "connection", etc.
+    token?: string      // Instance token
+    instanceName?: string
+    owner?: string      // Phone number of the WhatsApp instance
+
+    // Message data
+    message?: {
+        chatid?: string      // e.g., "5519989349254@s.whatsapp.net"
+        text?: string        // Message text
+        fromMe?: boolean
+        id?: string
+        messageid?: string
+        messageType?: string // "ExtendedTextMessage", etc.
+        senderName?: string
+        sender?: string
+        content?: {
+            text?: string
+        }
+        mediaType?: string
+        wasSentByApi?: boolean
+    }
+
+    // Chat/Contact data
+    chat?: {
+        name?: string
+        phone?: string
+        wa_chatid?: string
+        wa_contactName?: string
+    }
+
+    // Legacy format support (for connection events)
     event?: string
-    // Connection events
     status?: 'disconnected' | 'connecting' | 'connected'
     phone?: string
-    // Message events  
-    data?: {
-        key?: {
-            remoteJid?: string
-            fromMe?: boolean
-            id?: string
-        }
-        message?: {
-            conversation?: string
-            extendedTextMessage?: { text?: string }
-            imageMessage?: { caption?: string; url?: string }
-            audioMessage?: { url?: string }
-            documentMessage?: { caption?: string; url?: string; fileName?: string }
-        }
-        pushName?: string
-        status?: string
-    }
 }
 
 // POST: Receive webhooks from UAZAPI
 export async function POST(request: NextRequest) {
     try {
-        const body: WebhookPayload = await request.json()
+        const body: UazapiWebhookPayload = await request.json()
         const supabase = createAdminClient()
 
         if (!supabase) {
@@ -37,28 +51,49 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
         }
 
-        // Get instance token from URL path or header
-        const instanceToken = request.headers.get('x-instance-token') ||
+        // Log the full payload for debugging
+        console.log('=== WEBHOOK RECEIVED ===')
+        console.log('EventType:', body.EventType)
+        console.log('Token:', body.token)
+        console.log('Full body:', JSON.stringify(body, null, 2))
+
+        // Get instance token from body or URL
+        const instanceToken = body.token ||
+            request.headers.get('x-instance-token') ||
             request.nextUrl.searchParams.get('token')
 
-        console.log('Webhook received:', { event: body.event, status: body.status })
-
         // Find the organization by instance token
-        const { data: instance } = await supabase
-            .from('whatsapp_instances')
-            .select('id, organization_id, status')
-            .eq('instance_token', instanceToken)
-            .single()
-
-        // If no instance found by token, try to match by any available instance
         let organizationId: string
         let instanceId: string
 
-        if (instance) {
-            organizationId = instance.organization_id
-            instanceId = instance.id
+        if (instanceToken) {
+            const { data: instance } = await supabase
+                .from('whatsapp_instances')
+                .select('id, organization_id, status')
+                .eq('instance_token', instanceToken)
+                .single()
+
+            if (instance) {
+                organizationId = instance.organization_id
+                instanceId = instance.id
+            } else {
+                // Fallback: get first instance
+                const { data: firstInstance } = await supabase
+                    .from('whatsapp_instances')
+                    .select('id, organization_id')
+                    .limit(1)
+                    .single()
+
+                if (!firstInstance) {
+                    console.error('No WhatsApp instances configured')
+                    return NextResponse.json({ error: 'No instance found' }, { status: 404 })
+                }
+
+                organizationId = firstInstance.organization_id
+                instanceId = firstInstance.id
+            }
         } else {
-            // Fallback: get first instance (for development)
+            // No token - use first instance
             const { data: firstInstance } = await supabase
                 .from('whatsapp_instances')
                 .select('id, organization_id')
@@ -74,15 +109,17 @@ export async function POST(request: NextRequest) {
             instanceId = firstInstance.id
         }
 
-        // Handle connection events
-        if (body.status || body.event === 'connection' || body.event === 'connection.update') {
+        console.log('Using organization:', organizationId)
+
+        // Handle connection events (legacy format)
+        if (body.status || body.event === 'connection' || body.EventType === 'connection') {
             const newStatus = body.status || 'disconnected'
 
             await supabase
                 .from('whatsapp_instances')
                 .update({
                     status: newStatus,
-                    phone_number: body.phone || null,
+                    phone_number: body.phone || body.owner || null,
                     last_connected_at: newStatus === 'connected' ? new Date().toISOString() : null
                 })
                 .eq('id', instanceId)
@@ -91,131 +128,116 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: true })
         }
 
-        // Handle message events
-        if (body.event === 'messages' || body.event === 'messages.upsert' || body.data?.key?.remoteJid) {
-            const data = body.data
+        // Handle message events (NEW UAZAPI FORMAT)
+        if (body.EventType === 'messages' && body.message) {
+            const msg = body.message
+            const chat = body.chat
 
-            // Log full data for debugging
-            console.log('Webhook Message Data:', JSON.stringify(data, null, 2))
+            console.log('Processing message:', {
+                chatid: msg.chatid,
+                text: msg.text,
+                fromMe: msg.fromMe,
+                senderName: msg.senderName
+            })
 
-            if (!data?.key?.remoteJid) {
+            // Skip if no chatid
+            if (!msg.chatid) {
+                console.log('No chatid, skipping')
                 return NextResponse.json({ success: true })
             }
 
-            // Skip duplicate check for now (whatsapp_id column may not exist)
-            const whatsappMessageId = data.key.id
-            console.log('Processing message:', whatsappMessageId)
-
-            // Ignore own messages (unless we want to track phone-sent messages)
-            // Ideally we track them, but strict deduplication above handles the case if we already saved it via API
-            // For now, if fromMe is true AND it wasn't found in DB above, it means it was sent via Phone directly.
-            // We should probably save it as sender_type='user'.
-
-            const isFromMe = data.key.fromMe || false
-
-            // Extract message content
-            const message = data.message
-            let messageBody = ''
-            let mediaUrl = ''
-            let mediaType = ''
-
-            if (message?.conversation) {
-                messageBody = message.conversation
-            } else if (message?.extendedTextMessage?.text) {
-                messageBody = message.extendedTextMessage.text
-            } else if (message?.imageMessage) {
-                messageBody = message.imageMessage.caption || ''
-                mediaUrl = message.imageMessage.url || ''
-                mediaType = 'image'
-            } else if (message?.audioMessage) {
-                mediaUrl = message.audioMessage.url || ''
-                mediaType = 'audio'
-            } else if (message?.documentMessage) {
-                messageBody = message.documentMessage.caption || message.documentMessage.fileName || ''
-                mediaUrl = message.documentMessage.url || ''
-                mediaType = 'document'
+            // Skip messages sent by API (to avoid loops)
+            if (msg.wasSentByApi) {
+                console.log('Message was sent by API, skipping to avoid loop')
+                return NextResponse.json({ success: true })
             }
 
-            // Format phone number
-            const phone = data.key.remoteJid.split('@')[0]
-            const digits = phone.replace(/\D/g, '')
+            // Extract phone number from chatid
+            const phoneFromChatId = msg.chatid.split('@')[0]
+            const digits = phoneFromChatId.replace(/\D/g, '')
             const rawPhone = `+${digits}`
-            const formattedPhone = formatPhoneNumber(phone)
 
-            console.log('Looking for contact with phone:', { rawPhone, formattedPhone, organizationId })
+            // Get contact name
+            const contactName = msg.senderName || chat?.name || chat?.wa_contactName || rawPhone
 
-            // Find or create contact - try raw phone first, then formatted
-            let existingContact = null
+            console.log('Looking for contact:', { rawPhone, contactName, organizationId })
 
-            // Try raw phone format
-            const { data: rawPhoneContact } = await supabase
+            // Find or create contact
+            let contactId: string
+
+            // Try to find existing contact by phone
+            const { data: existingContact } = await supabase
                 .from('contacts')
                 .select('id')
                 .eq('organization_id', organizationId)
                 .eq('phone', rawPhone)
                 .single()
 
-            if (rawPhoneContact) {
-                existingContact = rawPhoneContact
-            } else {
-                // Try formatted phone
-                const { data: formattedPhoneContact } = await supabase
-                    .from('contacts')
-                    .select('id')
-                    .eq('organization_id', organizationId)
-                    .eq('phone', formattedPhone)
-                    .single()
-                existingContact = formattedPhoneContact
-            }
-
-            let contactId: string
-
             if (existingContact) {
                 contactId = existingContact.id
                 console.log('Found existing contact:', contactId)
             } else {
-                // Create new contact
-                console.log('Creating new contact...')
-                const { data: newContact, error } = await supabase
-                    .from('contacts')
-                    .insert({
-                        organization_id: organizationId,
-                        phone: rawPhone, // Use raw phone for consistency
-                        name: data.pushName || rawPhone,
-                        status: 'open'
-                    })
-                    .select('id')
-                    .single()
+                // Also try with formatted phone (from chat.phone)
+                const formattedPhone = chat?.phone
+                if (formattedPhone) {
+                    const { data: formattedContact } = await supabase
+                        .from('contacts')
+                        .select('id')
+                        .eq('organization_id', organizationId)
+                        .eq('phone', formattedPhone)
+                        .single()
 
-                if (error || !newContact) {
-                    console.error('Error creating contact:', error)
-                    return NextResponse.json({ error: 'Failed to create contact' }, { status: 500 })
+                    if (formattedContact) {
+                        contactId = formattedContact.id
+                        console.log('Found contact by formatted phone:', contactId)
+                    }
                 }
-                contactId = newContact.id
-                console.log('Created new contact:', contactId)
+
+                // Create new contact if not found
+                if (!contactId!) {
+                    console.log('Creating new contact...')
+                    const { data: newContact, error } = await supabase
+                        .from('contacts')
+                        .insert({
+                            organization_id: organizationId,
+                            phone: rawPhone,
+                            name: contactName,
+                            status: 'open'
+                        })
+                        .select('id')
+                        .single()
+
+                    if (error || !newContact) {
+                        console.error('Error creating contact:', error)
+                        return NextResponse.json({ error: 'Failed to create contact' }, { status: 500 })
+                    }
+                    contactId = newContact.id
+                    console.log('Created new contact:', contactId)
+                }
             }
 
-            // Save message (without whatsapp_id if column doesn't exist)
-            console.log('Saving message for contact:', contactId)
+            // Extract message text
+            const messageText = msg.text || msg.content?.text || ''
+            const isFromMe = msg.fromMe || false
+
+            // Save message
+            console.log('Saving message:', { contactId, messageText, isFromMe })
             const { error: msgError } = await supabase
                 .from('messages')
                 .insert({
                     organization_id: organizationId,
                     contact_id: contactId,
                     sender_type: isFromMe ? 'user' : 'contact',
-                    body: messageBody || null,
-                    media_url: mediaUrl || null,
-                    media_type: mediaType || null,
+                    body: messageText || null,
                     status: isFromMe ? 'sent' : 'received'
-                    // Note: whatsapp_id removed - column may not exist
                 })
 
             if (msgError) {
                 console.error('Error saving message:', msgError)
                 return NextResponse.json({ error: 'Failed to save message', details: msgError.message }, { status: 500 })
-            } else {
-                console.log(`Message saved from ${rawPhone}`)
             }
+
+            console.log(`✅ Message saved successfully from ${rawPhone}`)
         }
 
         return NextResponse.json({ success: true })
