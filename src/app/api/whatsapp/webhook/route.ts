@@ -33,7 +33,9 @@ interface UazapiWebhookPayload {
         phone?: string
         wa_chatid?: string
         wa_contactName?: string
-        profilePicUrl?: string // Field for profile picture
+        profilePicUrl?: string
+        image?: string       // From user payload
+        imagePreview?: string // From user payload
     }
 
     // Legacy format support (for connection events)
@@ -219,7 +221,7 @@ export async function POST(request: NextRequest) {
                             organization_id: organizationId,
                             phone: rawPhone,
                             name: contactName,
-                            avatar_url: msg.senderPhoto || chat?.profilePicUrl || null,
+                            avatar_url: msg.senderPhoto || chat?.imagePreview || chat?.image || chat?.profilePicUrl || null,
                             status: 'open'
                         })
                         .select('id')
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Update avatar_url if provided and different
-            const newAvatarUrl = msg.senderPhoto || chat?.profilePicUrl
+            const newAvatarUrl = msg.senderPhoto || chat?.imagePreview || chat?.image || chat?.profilePicUrl
             if (newAvatarUrl && contactId) {
                 await supabase
                     .from('contacts')

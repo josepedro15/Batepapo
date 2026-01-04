@@ -308,7 +308,7 @@ export async function getContacts(instanceToken: string): Promise<WhatsAppContac
             id: c.id,
             name: c.name || c.notify || c.id?.split('@')[0] || 'Unknown',
             phone: c.id?.split('@')[0] || '',
-            profilePicUrl: c.profilePicUrl
+            profilePicUrl: c.profilePicUrl || c.image || c.imagePreview || c.picture || c.params?.imagePreview
         }))
         .slice(0, 100) // Limit to 100 contacts
 }
