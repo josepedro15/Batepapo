@@ -54,6 +54,7 @@ export function ChatInterface({
         })
 
         // 2. Subscribe to new messages
+        console.log('Setting up Realtime subscription for contact:', selectedContact.id)
         const channel = supabase.channel(`chat:${selectedContact.id}`)
             .on('postgres_changes', {
                 event: 'INSERT',
@@ -61,11 +62,17 @@ export function ChatInterface({
                 table: 'messages',
                 filter: `contact_id=eq.${selectedContact.id}`
             }, (payload) => {
+                console.log('Realtime message received:', payload)
                 setMessages(prev => [...prev, payload.new as Message])
             })
-            .subscribe()
+            .subscribe((status) => {
+                console.log('Realtime subscription status:', status)
+            })
 
-        return () => { supabase.removeChannel(channel) }
+        return () => {
+            console.log('Removing Realtime channel')
+            supabase.removeChannel(channel)
+        }
     }, [selectedContact, supabase])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
