@@ -379,7 +379,7 @@ export async function downloadMedia(
         console.log('UAZAPI Download Response Keys:', Object.keys(data))
 
         return {
-            base64: data.data || data.base64 || data.content || data.response || data.body,
+            base64: data.base64Data || data.data || data.base64 || data.content || data.response || data.body,
             mimeType: data.mimetype || data.mimeType || 'audio/ogg'
         }
     } catch (error) {
