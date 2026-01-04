@@ -317,11 +317,18 @@ export async function getContacts(instanceToken: string): Promise<WhatsAppContac
  * Fetch profile picture for a specific phone number
  * POST /misc/downProfile
  */
+/**
+ * Fetch profile picture for a specific phone number
+ * POST /misc/downProfile
+ */
 export async function fetchProfilePicture(
     instanceToken: string,
     phone: string
 ): Promise<string | null> {
     try {
+        const cleanPhone = phone.replace(/\D/g, '')
+        const formattedPhone = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`
+
         const response = await fetch(`${UAZAPI_BASE_URL}/misc/downProfile`, {
             method: 'POST',
             headers: {
@@ -329,7 +336,7 @@ export async function fetchProfilePicture(
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                phone: phone.replace(/\D/g, '')
+                phone: formattedPhone
             })
         })
 

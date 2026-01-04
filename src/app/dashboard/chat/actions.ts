@@ -407,7 +407,7 @@ export async function syncProfilePictures() {
 
         const allDbPhones = await supabase
             .from('contacts')
-            .select('id, phone, name')
+            .select('id, phone, name, avatar_url')
             .eq('organization_id', orgId)
 
         logs.push(`Found ${waContacts.length} contacts on WhatsApp`)
@@ -420,6 +420,12 @@ export async function syncProfilePictures() {
         logs.push(`Starting sync for ${allDbPhones.data?.length} DB contacts...`)
 
         for (const dbContact of allDbPhones.data || []) {
+            // OPTIMIZATION: Skip if already has avatar
+            if (dbContact.avatar_url) {
+                // logs.push(`Skipping ${dbContact.name} - already has photo`)
+                continue
+            }
+
             let avatarUrl: string | undefined
 
             // Clean DB phone for matching
