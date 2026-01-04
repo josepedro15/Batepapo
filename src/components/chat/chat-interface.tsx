@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { assignChat, sendMessage, finishChat, reopenChat, getMessages } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
@@ -40,6 +40,16 @@ export function ChatInterface({
     const [showTransferDialog, setShowTransferDialog] = useState(false)
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [showDetailsPanel, setShowDetailsPanel] = useState(true)
+    const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    // Scroll of new messages
+    useEffect(() => {
+        scrollToBottom()
+    }, [messages])
 
     // Realtime Setup
     const supabase = createClient()
@@ -311,6 +321,7 @@ export function ChatInterface({
                                     </div>
                                 ))
                             )}
+                            <div ref={messagesEndRef} />
                         </div>
 
                         {/* Input Area (Only if "Mine") */}
