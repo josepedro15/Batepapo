@@ -135,8 +135,19 @@ export function ChatInterface({
     // Automatic Sync on Mount (once)
     useEffect(() => {
         // Run sync after a short delay to let initial chats load
-        const timer = setTimeout(() => {
-            syncProfilePictures()
+        const timer = setTimeout(async () => {
+            console.log('🔄 Starting auto-sync of profile pictures...')
+            try {
+                const result = await syncProfilePictures()
+                console.log('✅ Sync result:', result)
+                if (result.success) {
+                    console.log(`📸 Updated ${result.updatedCount} profile pictures`)
+                } else {
+                    console.warn('⚠️ Sync failed:', result.error)
+                }
+            } catch (err) {
+                console.error('❌ Error calling syncProfilePictures:', err)
+            }
         }, 2000)
         return () => clearTimeout(timer)
     }, [])

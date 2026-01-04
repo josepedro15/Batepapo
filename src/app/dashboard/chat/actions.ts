@@ -403,26 +403,30 @@ export async function syncProfilePictures() {
 
         // 4. Update local contacts
         let updatedCount = 0
+        const logs: string[] = [] // Collect logs to return to client
+
         const allDbPhones = await supabase
             .from('contacts')
-            .select('id, phone')
+            .select('id, phone, name')
             .eq('organization_id', orgId)
 
-        console.log(`Matching against ${allDbPhones.data?.length} contacts in DB`)
+        logs.push(`Found ${waContacts.length} contacts on WhatsApp`)
+        logs.push(`Found ${allDbPhones.data?.length} contacts in DB`)
 
         for (const waContact of waContacts) {
             if (waContact.profilePicUrl) {
                 const digits = waContact.phone.replace(/\D/g, '')
 
                 // Try to find matching contact in our DB (flexible match)
-                const matched = allDbPhones.data?.find(c =>
-                    c.phone.replace(/\D/g, '') === digits ||
-                    c.phone.replace(/\D/g, '').endsWith(digits) ||
-                    digits.endsWith(c.phone.replace(/\D/g, ''))
-                )
+                const matched = allDbPhones.data?.find(c => {
+                    const dbDigits = c.phone.replace(/\D/g, '')
+                    return dbDigits === digits ||
+                        dbDigits.endsWith(digits) ||
+                        digits.endsWith(dbDigits)
+                })
 
                 if (matched) {
-                    console.log(`Matched ${waContact.name} (${digits}) -> ${matched.id}`)
+                    logs.push(`✓ Matched ${waContact.name} (${digits}) -> ${matched.name}`)
                     const { error: updateError } = await supabase
                         .from('contacts')
                         .update({ avatar_url: waContact.profilePicUrl })
@@ -430,15 +434,15 @@ export async function syncProfilePictures() {
 
                     if (!updateError) updatedCount++
                 } else {
-                    console.log(`No match for ${waContact.name} (${digits})`)
+                    // logs.push(`✗ No match for ${waContact.name} (${digits})`) // Too verbose
                 }
             }
         }
 
         revalidatePath('/dashboard/chat')
-        return { success: true, updatedCount }
+        return { success: true, updatedCount, logs }
     } catch (e: any) {
         console.error('Error in syncProfilePictures:', e)
-        return { error: e.message || 'Unknown error' }
+        return { error: e.message || 'Unknown error', logs: ['Error occurred'] }
     }
 }
