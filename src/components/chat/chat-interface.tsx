@@ -83,6 +83,10 @@ export function ChatInterface({
                 .stop()
                 .getMp3()
                 .then(([buffer, blob]) => {
+                    if (blob.size < 1000) {
+                        toast.error('Áudio muito curto ou vazio')
+                        return
+                    }
                     const file = new File(buffer, 'recording.mp3', { type: 'audio/mp3' })
                     setMediaFiles(prev => [...prev, {
                         file,

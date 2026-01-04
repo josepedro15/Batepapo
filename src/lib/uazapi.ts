@@ -305,7 +305,7 @@ export async function sendVoiceMessage(
     phone: string,
     audioUrl: string
 ): Promise<{ messageId: string }> {
-    return sendMedia(instanceToken, phone, 'audio', audioUrl)
+    return sendMedia(instanceToken, phone, 'ptt', audioUrl)
 }
 
 /**
