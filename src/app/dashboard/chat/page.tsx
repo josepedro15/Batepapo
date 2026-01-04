@@ -15,11 +15,6 @@ export default async function ChatPage() {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="mb-4">
-                <h1 className="text-3xl font-bold text-white">Atendimento</h1>
-                <p className="text-slate-400">Gerencie suas conversas e a fila de espera.</p>
-            </div>
-
             <div className="flex-1 overflow-hidden">
                 <ChatInterface
                     initialMyChats={myChats || []}
