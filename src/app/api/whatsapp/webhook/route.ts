@@ -16,12 +16,15 @@ interface UazapiWebhookPayload {
         fromMe?: boolean
         id?: string
         messageid?: string
-        messageType?: string // "ExtendedTextMessage", etc.
+        type?: string        // "media", "text", etc.
+        messageType?: string // "ExtendedTextMessage", "AudioMessage", etc.
         senderName?: string
         sender?: string
         senderPhoto?: string  // Potential field for profile picture
         content?: {
             text?: string
+            URL?: string     // UAZAPI audio URL
+            url?: string     // Alternative casing
         }
         mediaType?: string
         wasSentByApi?: boolean
@@ -245,19 +248,31 @@ export async function POST(request: NextRequest) {
                     .eq('id', contactId)
             }
 
-            // Extract message text
+            // Extract message text and media
             const messageText = msg.text || msg.content?.text || ''
             const isFromMe = msg.fromMe || false
 
+            let mediaUrl = null
+            let mediaType = null
+
+            // Handle Audio/PTT
+            if (msg.mediaType === 'ptt' || msg.mediaType === 'audio' || msg.type === 'audio') {
+                mediaUrl = msg.content?.URL || msg.content?.url
+                mediaType = 'audio'
+                console.log('Audio message detected:', mediaUrl)
+            }
+
             // Save message (messageId already defined above for dedup check)
-            console.log('Saving message:', { contactId, messageText, isFromMe, messageId })
+            console.log('Saving message:', { contactId, messageText, isFromMe, messageId, mediaType })
             const { error: msgError } = await supabase
                 .from('messages')
                 .insert({
                     organization_id: organizationId,
                     contact_id: contactId,
                     sender_type: isFromMe ? 'user' : 'contact',
-                    body: messageText || null,
+                    body: messageText || (mediaType === 'audio' ? 'Áudio' : null),
+                    media_url: mediaUrl,
+                    media_type: mediaType,
                     status: isFromMe ? 'sent' : 'received',
                     whatsapp_id: messageId || null
                 })

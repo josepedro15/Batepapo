@@ -12,7 +12,14 @@ import { toast } from 'sonner' // Assuming toast is available or use console/nat
 
 // Types (simplified for this file)
 type Contact = { id: string; name: string; phone: string; tags: string[] | null; last_message_at?: string; avatar_url?: string }
-type Message = { id: string; body: string; sender_type: 'user' | 'contact' | 'system'; created_at: string }
+type Message = {
+    id: string;
+    body: string | null;
+    sender_type: 'user' | 'contact' | 'system';
+    created_at: string;
+    media_url?: string | null;
+    media_type?: string | null;
+}
 
 export function ChatInterface({
     initialMyChats,
@@ -347,15 +354,30 @@ export function ChatInterface({
                                     <p>Inicie a conversa ou aguarde mensagens.</p>
                                 </div>
                             ) : (
-                                messages.map(msg => (
-                                    <div key={msg.id} className={cn("flex", msg.sender_type === 'user' ? "justify-end" : "justify-start")}>
-                                        <div className={cn(
-                                            "max-w-[70%] p-3 rounded-xl text-sm",
-                                            msg.sender_type === 'user'
-                                                ? "bg-violet-600 text-white rounded-tr-none"
-                                                : "bg-slate-800 text-slate-200 rounded-tl-none border border-white/10"
-                                        )}>
-                                            {msg.body}
+                                messages.map(message => (
+                                    <div key={message.id} className={cn("flex", message.sender_type === 'user' ? "justify-end" : "justify-start")}>
+                                        <div
+                                            className={`
+                                                    p-3 rounded-2xl max-w-[80%] 
+                                                    ${message.sender_type === 'user'
+                                                    ? 'bg-violet-600 text-white rounded-tr-none'
+                                                    : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/10'
+                                                }
+                                                `}
+                                        >
+                                            {message.body && message.media_type !== 'audio' && (
+                                                <p>{message.body}</p>
+                                            )}
+
+                                            {message.media_type === 'audio' && message.media_url && (
+                                                <div className="flex items-center gap-2 min-w-[200px]">
+                                                    <audio controls className="w-full h-8 max-w-[250px]" src={message.media_url}>
+                                                        Your browser does not support the audio element.
+                                                    </audio>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center justify-end gap-1 mt-1"></div>
                                         </div>
                                     </div>
                                 ))
