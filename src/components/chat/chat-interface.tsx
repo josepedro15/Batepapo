@@ -39,6 +39,7 @@ export function ChatInterface({
     const [inputText, setInputText] = useState('')
     const [showTransferDialog, setShowTransferDialog] = useState(false)
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
+    const [showDetailsPanel, setShowDetailsPanel] = useState(true)
 
     // Realtime Setup
     const supabase = createClient()
@@ -263,6 +264,15 @@ export function ChatInterface({
                                                 <ArrowRight className="h-4 w-4" /> Transferir
                                             </button>
                                         )}
+                                        {!showDetailsPanel && (
+                                            <button
+                                                onClick={() => setShowDetailsPanel(true)}
+                                                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                                                title="Mostrar Detalhes"
+                                            >
+                                                <User className="h-4 w-4" /> Detalhes
+                                            </button>
+                                        )}
                                     </>
                                 )}
 
@@ -346,8 +356,8 @@ export function ChatInterface({
             </div>
 
             {/* RIGHT SIDEBAR DETAILS (Optional/Toggleable) */}
-            {selectedContact && (
-                <ContactDetailsPanel contact={selectedContact} onClose={() => { /* maybe hide it? for now always visible if contact selected */ }} />
+            {selectedContact && showDetailsPanel && (
+                <ContactDetailsPanel contact={selectedContact} onClose={() => setShowDetailsPanel(false)} />
             )}
 
             {/* Transfer Dialog */}
