@@ -28,7 +28,11 @@ export default function AdminPage() {
 
     const fetchUsers = async () => {
         try {
-            const res = await fetch('/api/admin/users')
+            // Add timestamp to prevent caching
+            const res = await fetch(`/api/admin/users?t=${Date.now()}`, {
+                cache: 'no-store',
+                next: { revalidate: 0 }
+            })
             if (!res.ok) throw new Error('Failed to fetch users')
             const data = await res.json()
             setUsers(data)
@@ -47,7 +51,7 @@ export default function AdminPage() {
                 body: JSON.stringify({ userId, action: 'toggle_admin' })
             })
             if (res.ok) {
-                fetchUsers() // Refresh list
+                await fetchUsers() // Refresh list
             }
         } catch (error) {
             console.error(error)
@@ -67,6 +71,7 @@ export default function AdminPage() {
 
             if (res.ok) {
                 await fetchUsers()
+                alert('Plano atualizado com sucesso para ' + planId.toUpperCase())
             } else {
                 const data = await res.json()
                 alert('Erro ao atualizar plano: ' + (data.error || 'Erro desconhecido'))
