@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Loader2, Sparkles, Users, MessageSquare, BarChart3 } from 'lucide-react'
+import { Check, Loader2, Sparkles, Users, MessageSquare, BarChart3, LogOut } from 'lucide-react'
+import { logout } from '@/app/dashboard/logout-action'
 
 const plans = [
     {
@@ -80,7 +81,15 @@ export default function PlanSelectionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative">
+            <button
+                onClick={() => logout()}
+                className="absolute top-4 right-4 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors px-4 py-2 rounded-lg hover:bg-white/5"
+            >
+                <LogOut className="h-4 w-4" />
+                Sair da conta
+            </button>
+
             <div className="text-center mb-12">
                 <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
                     <Sparkles className="h-4 w-4" />
@@ -99,8 +108,8 @@ export default function PlanSelectionPage() {
                     <div
                         key={plan.id}
                         className={`relative glass p-8 rounded-2xl border-2 transition-all ${plan.popular
-                                ? 'border-primary shadow-xl shadow-primary/20'
-                                : 'border-white/10 hover:border-white/20'
+                            ? 'border-primary shadow-xl shadow-primary/20'
+                            : 'border-white/10 hover:border-white/20'
                             }`}
                     >
                         {plan.popular && (
@@ -157,8 +166,8 @@ export default function PlanSelectionPage() {
                             onClick={() => handleSelectPlan(plan.id)}
                             disabled={loading !== null}
                             className={`w-full py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 ${plan.popular
-                                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30'
-                                    : 'bg-white/10 hover:bg-white/20 text-foreground'
+                                ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30'
+                                : 'bg-white/10 hover:bg-white/20 text-foreground'
                                 } disabled:opacity-50`}
                         >
                             {loading === plan.id ? (
