@@ -4,7 +4,7 @@ import { GenerateKeyForm } from './generate-key-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { TagManagement } from '@/components/settings/tag-management'
 import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
-import { Key, Trash2, Settings2, Shield, Palette, Bell, Database, Copy } from 'lucide-react'
+import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound } from 'lucide-react'
 
 export default async function SettingsPage() {
     const supabase = await createClient()
@@ -23,36 +23,60 @@ export default async function SettingsPage() {
         .order('role')
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-display text-foreground">Configurações</h1>
-                    <p className="text-muted-foreground mt-1">Gerencie sua equipe, integrações e preferências.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm font-medium">
-                        Plano PRO
-                    </span>
+        <div className="min-h-[calc(100vh-6rem)] space-y-8">
+            {/* Header com gradiente decorativo */}
+            <div className="relative overflow-hidden rounded-2xl glass-heavy p-8">
+                <div className="relative flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/30">
+                            <Sparkles className="h-7 w-7 text-primary-foreground" />
+                        </div>
+                        <div>
+                            <h1 className="text-display text-foreground">Configurações</h1>
+                            <p className="text-muted-foreground mt-1">Gerencie sua equipe, integrações e preferências.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Main Grid - 2 columns layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column - Main Settings */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Team Management */}
-                    <TeamManagement members={members || []} />
+            {/* Seção: Equipe e WhatsApp */}
+            <section className="animate-fade-in" style={{ animationDelay: '100ms' }}>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Users className="h-4 w-4 text-primary" />
+                    </div>
+                    <h2 className="text-headline text-foreground">Equipe & Conexões</h2>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 animate-slide-up" style={{ animationDelay: '150ms' }}>
+                        <TeamManagement members={members || []} />
+                    </div>
+                    <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
+                        <WhatsAppConnectionCard />
+                    </div>
+                </div>
+            </section>
 
+            {/* Seção: Integrações */}
+            <section className="animate-fade-in" style={{ animationDelay: '250ms' }}>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                        <KeyRound className="h-4 w-4 text-accent" />
+                    </div>
+                    <h2 className="text-headline text-foreground">Integrações & API</h2>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* API Keys Section */}
-                    <div className="glass p-6 rounded-2xl">
+                    <div className="lg:col-span-2 glass p-6 rounded-2xl animate-slide-up" style={{ animationDelay: '300ms' }}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                                    <Key className="h-5 w-5 text-primary" />
+                                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center border border-accent/20">
+                                    <Key className="h-5 w-5 text-accent" />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-bold text-foreground">Chaves de API</h2>
+                                    <h3 className="text-lg font-bold text-foreground">Chaves de API</h3>
                                     <p className="text-sm text-muted-foreground">Integração com n8n e sistemas externos</p>
                                 </div>
                             </div>
@@ -63,10 +87,14 @@ export default async function SettingsPage() {
 
                         {/* Keys List */}
                         <div className="space-y-3 mt-4">
-                            {keys?.map((key) => (
-                                <div key={key.id} className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 group hover:border-primary/20 transition-all">
+                            {keys?.map((key, index) => (
+                                <div 
+                                    key={key.id} 
+                                    className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 group hover:border-accent/30 hover:bg-accent/5 transition-all duration-300"
+                                    style={{ animationDelay: `${350 + index * 50}ms` }}
+                                >
                                     <div className="flex items-center gap-4">
-                                        <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-mono text-xs font-bold">
+                                        <div className="h-10 w-10 bg-gradient-to-br from-accent/20 to-accent/5 rounded-lg flex items-center justify-center text-accent font-mono text-xs font-bold border border-accent/20">
                                             KEY
                                         </div>
                                         <div>
@@ -74,8 +102,8 @@ export default async function SettingsPage() {
                                             <p className="text-xs text-muted-foreground font-mono">Criado em: {new Date(key.created_at).toLocaleDateString('pt-BR')}</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Copiar">
+                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                        <button className="p-2 text-muted-foreground hover:text-accent hover:bg-accent/10 rounded-lg transition-colors" title="Copiar">
                                             <Copy className="h-4 w-4" />
                                         </button>
                                         <form action={async () => {
@@ -90,67 +118,23 @@ export default async function SettingsPage() {
                                 </div>
                             ))}
                             {keys?.length === 0 && (
-                                <div className="text-center py-8 text-muted-foreground">
-                                    <Key className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                                    <p>Nenhuma chave de API ativa</p>
-                                    <p className="text-xs mt-1">Gere uma chave para integrar com sistemas externos</p>
+                                <div className="text-center py-10 rounded-xl border-2 border-dashed border-border/50">
+                                    <div className="h-14 w-14 bg-muted/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <Key className="h-7 w-7 text-muted-foreground/50" />
+                                    </div>
+                                    <p className="text-muted-foreground font-medium">Nenhuma chave de API ativa</p>
+                                    <p className="text-xs text-muted-foreground/70 mt-1">Gere uma chave para integrar com sistemas externos</p>
                                 </div>
                             )}
                         </div>
                     </div>
-                </div>
-
-                {/* Right Column - Secondary Settings */}
-                <div className="space-y-6">
-                    {/* WhatsApp Status */}
-                    <WhatsAppConnectionCard />
 
                     {/* Tag Management */}
-                    <TagManagement />
-
-                    {/* Quick Settings */}
-                    <div className="glass p-6 rounded-2xl">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Settings2 className="h-5 w-5 text-muted-foreground" />
-                            <h3 className="font-bold text-foreground">Preferências</h3>
-                        </div>
-
-                        <div className="space-y-3">
-                            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-                                <Bell className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                                <div className="flex-1">
-                                    <p className="font-medium text-foreground text-sm">Notificações</p>
-                                    <p className="text-xs text-muted-foreground">Alertas e sons</p>
-                                </div>
-                            </button>
-
-                            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-                                <Palette className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                                <div className="flex-1">
-                                    <p className="font-medium text-foreground text-sm">Aparência</p>
-                                    <p className="text-xs text-muted-foreground">Tema e cores</p>
-                                </div>
-                            </button>
-
-                            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-                                <Shield className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                                <div className="flex-1">
-                                    <p className="font-medium text-foreground text-sm">Segurança</p>
-                                    <p className="text-xs text-muted-foreground">Senha e 2FA</p>
-                                </div>
-                            </button>
-
-                            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors text-left group">
-                                <Database className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                                <div className="flex-1">
-                                    <p className="font-medium text-foreground text-sm">Dados</p>
-                                    <p className="text-xs text-muted-foreground">Exportar e backup</p>
-                                </div>
-                            </button>
-                        </div>
+                    <div className="animate-slide-up" style={{ animationDelay: '350ms' }}>
+                        <TagManagement />
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
     )
 }

@@ -15,14 +15,14 @@ export function PipelineSelector({ pipelines, currentPipelineId }: { pipelines: 
     if (!pipelines || pipelines.length <= 1) return null
 
     return (
-        <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 border border-slate-700">
+        <div className="flex items-center gap-1 bg-muted/50 rounded-xl p-1 border border-border/50">
             {pipelines.map(p => (
                 <button
                     key={p.id}
                     onClick={() => handleChange(p.id)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currentPipelineId === p.id
-                            ? 'bg-violet-600 text-white shadow-sm'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${currentPipelineId === p.id
+                            ? 'bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/80'
                         }`}
                 >
                     {p.name}

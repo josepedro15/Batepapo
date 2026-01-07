@@ -9,6 +9,9 @@ const UAZAPI_BASE_URL = 'https://atendsoft.uazapi.com'
 // Get admin token from environment
 function getAdminToken(): string {
     const token = process.env.UAZAPI_ADMIN_TOKEN
+    // DEBUG: Log token info (remove after debugging)
+    console.log('[UAZAPI DEBUG] Token exists:', !!token)
+    console.log('[UAZAPI DEBUG] Token preview:', token ? `${token.substring(0, 10)}...` : 'EMPTY')
     if (!token) {
         throw new Error('UAZAPI_ADMIN_TOKEN environment variable is required')
     }
