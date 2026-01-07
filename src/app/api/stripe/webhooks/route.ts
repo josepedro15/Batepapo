@@ -93,53 +93,53 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     const userId = session.metadata?.supabase_user_id
     if (!userId) return
 
-    // Create organization for the user
-    const { data: org, error: orgError } = await adminClient
-        .from('organizations')
-        .insert({
-            name: 'Minha Empresa',
-            slug: `org-${Date.now()}`,
-            owner_id: userId,
-        })
-        .select()
+    // Find user's existing organization (created during onboarding)
+    const { data: membership } = await adminClient
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
         .single()
 
-    if (orgError) {
-        console.error('Error creating organization:', orgError)
+    if (!membership) {
+        console.error('No organization found for user:', userId)
         return
     }
 
-    // Add user as owner member
-    await adminClient.from('organization_members').insert({
-        organization_id: org.id,
-        user_id: userId,
-        role: 'owner',
-    })
+    const organizationId = membership.organization_id
 
-    // Create default pipeline
-    const { data: pipeline } = await adminClient
+    // Create default pipeline if not exists
+    const { data: existingPipeline } = await adminClient
         .from('pipelines')
-        .insert({
-            organization_id: org.id,
-            name: 'Vendas',
-        })
-        .select()
+        .select('id')
+        .eq('organization_id', organizationId)
+        .limit(1)
         .single()
 
-    if (pipeline) {
-        // Create default stages
-        await adminClient.from('stages').insert([
-            { pipeline_id: pipeline.id, name: 'Novo', position: 0, color: '#3b82f6' },
-            { pipeline_id: pipeline.id, name: 'Em Negociação', position: 1, color: '#f59e0b' },
-            { pipeline_id: pipeline.id, name: 'Fechado', position: 2, color: '#10b981' },
-        ])
+    if (!existingPipeline) {
+        const { data: pipeline } = await adminClient
+            .from('pipelines')
+            .insert({
+                organization_id: organizationId,
+                name: 'Vendas',
+            })
+            .select()
+            .single()
+
+        if (pipeline) {
+            // Create default stages
+            await adminClient.from('stages').insert([
+                { pipeline_id: pipeline.id, name: 'Novo', position: 0, color: '#3b82f6' },
+                { pipeline_id: pipeline.id, name: 'Em Negociação', position: 1, color: '#f59e0b' },
+                { pipeline_id: pipeline.id, name: 'Fechado', position: 2, color: '#10b981' },
+            ])
+        }
     }
 
     // Link subscription to organization
     if (session.subscription) {
         await adminClient
             .from('subscriptions')
-            .update({ organization_id: org.id })
+            .update({ organization_id: organizationId })
             .eq('id', session.subscription as string)
     }
 }

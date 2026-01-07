@@ -42,8 +42,21 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    // If user is signed in, check if they have an organization
+    // Helper function to check active subscription
+    const checkSubscription = async (userId: string) => {
+        const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('id, status')
+            .eq('user_id', userId)
+            .in('status', ['active', 'trialing'])
+            .limit(1)
+            .single()
+        return subscription
+    }
+
+    // If user is signed in and accessing dashboard
     if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
+        // Check if user has an organization
         const { data: membership } = await supabase
             .from('organization_members')
             .select('id')
@@ -55,9 +68,15 @@ export async function middleware(request: NextRequest) {
         if (!membership) {
             return NextResponse.redirect(new URL('/onboarding', request.url))
         }
+
+        // Check if user has an active subscription
+        const subscription = await checkSubscription(user.id)
+        if (!subscription) {
+            return NextResponse.redirect(new URL('/onboarding/plan', request.url))
+        }
     }
 
-    // If user is on onboarding but already has an organization, redirect to dashboard
+    // If user is on onboarding pages
     if (user && request.nextUrl.pathname.startsWith('/onboarding')) {
         const { data: membership } = await supabase
             .from('organization_members')
@@ -66,9 +85,28 @@ export async function middleware(request: NextRequest) {
             .limit(1)
             .single()
 
-        // If already has organization, redirect to dashboard
-        if (membership) {
+        // Check subscription status
+        const subscription = await checkSubscription(user.id)
+
+        // If user has organization AND active subscription, redirect to dashboard
+        if (membership && subscription) {
             return NextResponse.redirect(new URL('/dashboard', request.url))
+        }
+
+        // If user has organization but NO subscription, should be on /onboarding/plan
+        if (membership && !subscription) {
+            // Allow access to plan and success pages
+            if (request.nextUrl.pathname === '/onboarding') {
+                return NextResponse.redirect(new URL('/onboarding/plan', request.url))
+            }
+            // Allow /onboarding/plan and /onboarding/success
+        }
+
+        // If user has NO organization, should be on /onboarding (not /plan)
+        if (!membership) {
+            if (request.nextUrl.pathname !== '/onboarding') {
+                return NextResponse.redirect(new URL('/onboarding', request.url))
+            }
         }
     }
 
@@ -80,5 +118,6 @@ export const config = {
         '/dashboard/:path*',
         '/login',
         '/onboarding',
+        '/onboarding/:path*',
     ],
 }

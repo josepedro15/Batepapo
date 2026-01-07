@@ -32,6 +32,20 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Check if user has an organization (required before checkout)
+        const { data: membership } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!membership) {
+            return NextResponse.json(
+                { error: 'Please complete onboarding first' },
+                { status: 400 }
+            )
+        }
+
         // Check if user already has a Stripe customer
         const { data: customer } = await supabase
             .from('customers')

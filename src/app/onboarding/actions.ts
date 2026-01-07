@@ -32,5 +32,5 @@ export async function createOrganization(formData: FormData) {
 
     if (memberError) throw new Error(memberError.message)
 
-    redirect('/dashboard')
+    redirect('/onboarding/plan')
 }
