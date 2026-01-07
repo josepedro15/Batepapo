@@ -54,6 +54,31 @@ export default function AdminPage() {
         }
     }
 
+    const updatePlan = async (userId: string, planId: string) => {
+        if (!confirm(`Tem certeza que deseja mudar o plano deste usuário para ${planId.toUpperCase()}?`)) return
+
+        setLoading(true)
+        try {
+            const res = await fetch('/api/admin/users', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, action: 'update_plan', planId })
+            })
+
+            if (res.ok) {
+                await fetchUsers()
+            } else {
+                const data = await res.json()
+                alert('Erro ao atualizar plano: ' + (data.error || 'Erro desconhecido'))
+            }
+        } catch (error) {
+            console.error(error)
+            alert('Erro ao processar requisição')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const filteredUsers = users.filter(user =>
         user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -168,6 +193,23 @@ export default function AdminPage() {
                                         >
                                             {user.is_super_admin ? 'Revogar Admin' : 'Tornar Admin'}
                                         </button>
+
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <button
+                                                onClick={() => updatePlan(user.id, 'starter')}
+                                                disabled={loading}
+                                                className="text-[10px] px-2 py-1 bg-white/5 hover:bg-white/10 rounded transition-colors text-muted-foreground hover:text-white border border-white/5"
+                                            >
+                                                Set Starter
+                                            </button>
+                                            <button
+                                                onClick={() => updatePlan(user.id, 'pro')}
+                                                disabled={loading}
+                                                className="text-[10px] px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded transition-colors text-primary border border-primary/20"
+                                            >
+                                                Set Pro
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

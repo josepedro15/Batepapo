@@ -100,6 +100,79 @@ export async function PATCH(request: NextRequest) {
                 .from('profiles')
                 .update({ is_super_admin: !profile?.is_super_admin })
                 .eq('id', userId)
+        } else if (action === 'update_plan') {
+            // Manual Plan Override
+            const { planId } = body // 'starter' or 'pro'
+
+            // Get Price ID from Env or DB
+            // We need to look up a valid price_id from the prices table to satisfy FK
+            // Assuming we want the monthly price for simplicity
+
+            let targetPriceId = process.env.STRIPE_PRICE_STARTER
+            if (planId === 'pro') targetPriceId = process.env.STRIPE_PRICE_PRO
+
+            if (!targetPriceId) {
+                // Fallback: try to find ANY price for the product name
+                // This is a bit loose but helps if envs are missing
+                const productName = planId === 'pro' ? 'Pro' : 'Starter'
+                const { data: price } = await adminClient
+                    .from('prices')
+                    .select('id, products!inner(name)')
+                    .eq('products.name', productName)
+                    .limit(1)
+                    .single()
+
+                if (price) targetPriceId = price.id
+            }
+
+            if (!targetPriceId) {
+                return NextResponse.json({ error: 'Price ID not found for plan ' + planId }, { status: 400 })
+            }
+
+            // Check for existing sub
+            const { data: existingSub } = await adminClient
+                .from('subscriptions')
+                .select('id')
+                .eq('user_id', userId)
+                .limit(1)
+                .single()
+
+            const now = new Date().toISOString()
+            const nextYear = new Date()
+            nextYear.setFullYear(nextYear.getFullYear() + 1)
+
+            const subData = {
+                user_id: userId,
+                status: 'active',
+                price_id: targetPriceId,
+                current_period_start: now,
+                current_period_end: nextYear.toISOString(),
+                cancel_at_period_end: false,
+                metadata: { manual_override_by: 'admin' }
+            }
+
+            if (existingSub) {
+                await adminClient
+                    .from('subscriptions')
+                    .update(subData)
+                    .eq('id', existingSub.id)
+            } else {
+                // Should link to organization if possible
+                const { data: membership } = await adminClient
+                    .from('organization_members')
+                    .select('organization_id')
+                    .eq('user_id', userId)
+                    .limit(1)
+                    .single()
+
+                await adminClient
+                    .from('subscriptions')
+                    .insert({
+                        id: `sub_manual_${Date.now()}`,
+                        ...subData,
+                        organization_id: membership?.organization_id
+                    })
+            }
         }
 
         // Handle subscription changes manually if needed (advanced)
