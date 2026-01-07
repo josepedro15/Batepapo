@@ -42,6 +42,25 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
+    // GLOBAL SUPER ADMIN CHECK
+    // If user is super admin, they have full access and bypass all subscription logic
+    if (user) {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('is_super_admin')
+            .eq('id', user.id)
+            .single()
+
+        if (profile?.is_super_admin) {
+            // If admin tries to access onboarding or plan pages, redirect to admin dashboard
+            if (request.nextUrl.pathname.startsWith('/onboarding')) {
+                return NextResponse.redirect(new URL('/dashboard/admin', request.url))
+            }
+            // Allow access to everything else (dashboard, api, etc)
+            return supabaseResponse
+        }
+    }
+
     // Helper function to check active subscription
     const checkSubscription = async (userId: string) => {
         const { data: subscription } = await supabase
@@ -56,17 +75,6 @@ export async function middleware(request: NextRequest) {
 
     // If user is signed in and accessing dashboard
     if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
-        // Check if user is super admin (bypass everything)
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('is_super_admin')
-            .eq('id', user.id)
-            .single()
-
-        if (profile?.is_super_admin) {
-            return supabaseResponse
-        }
-
         // Check if user has an organization
         const { data: membership } = await supabase
             .from('organization_members')
