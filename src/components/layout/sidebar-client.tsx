@@ -8,7 +8,8 @@ import {
     Megaphone,
     Settings,
     Users,
-    LogOut
+    LogOut,
+    Shield
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OrgSwitcher } from "./org-switcher"
@@ -23,7 +24,15 @@ const navigation = [
     { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ]
 
-export function SidebarClient({ organizations, currentOrgId }: { organizations: any[], currentOrgId: string }) {
+export function SidebarClient({
+    organizations,
+    currentOrgId,
+    isSuperAdmin
+}: {
+    organizations: any[],
+    currentOrgId: string,
+    isSuperAdmin: boolean
+}) {
     const pathname = usePathname()
 
     return (
@@ -63,6 +72,24 @@ export function SidebarClient({ organizations, currentOrgId }: { organizations: 
                         </Link>
                     )
                 })}
+
+                {isSuperAdmin && (
+                    <Link
+                        href="/dashboard/admin"
+                        className={cn(
+                            "flex h-12 w-full items-center justify-center rounded-xl",
+                            "transition-all duration-200",
+                            "text-amber-500 hover:bg-amber-500/10",
+                            "group-hover:justify-start group-hover:px-4",
+                            pathname?.startsWith('/dashboard/admin') && "bg-amber-500/10"
+                        )}
+                    >
+                        <Shield className="h-6 w-6 shrink-0" />
+                        <span className="hidden group-hover:block ml-3 font-medium">
+                            Admin
+                        </span>
+                    </Link>
+                )}
             </nav>
 
             {/* Theme Toggle & Logout */}

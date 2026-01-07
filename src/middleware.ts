@@ -56,6 +56,17 @@ export async function middleware(request: NextRequest) {
 
     // If user is signed in and accessing dashboard
     if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
+        // Check if user is super admin (bypass everything)
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('is_super_admin')
+            .eq('id', user.id)
+            .single()
+
+        if (profile?.is_super_admin) {
+            return supabaseResponse
+        }
+
         // Check if user has an organization
         const { data: membership } = await supabase
             .from('organization_members')

@@ -5,6 +5,15 @@ export async function Sidebar() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
+    // Fetch super admin status
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', user?.id || '')
+        .single()
+
+    const isSuperAdmin = profile?.is_super_admin || false
+
     // Fetch user's organizations
     const { data: organizations } = await supabase
         .from('organization_members')
@@ -15,6 +24,10 @@ export async function Sidebar() {
     const currentOrgId = organizations?.[0]?.organization_id || ''
 
     return (
-        <SidebarClient organizations={organizations || []} currentOrgId={currentOrgId} />
+        <SidebarClient
+            organizations={organizations || []}
+            currentOrgId={currentOrgId}
+            isSuperAdmin={isSuperAdmin}
+        />
     )
 }
