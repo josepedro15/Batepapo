@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Shield, Search, MoreVertical, Loader2, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
+import { Shield, Search, MoreVertical, Loader2, CheckCircle, XCircle, AlertTriangle, Crown, Zap } from 'lucide-react'
 
 type User = {
     id: string
@@ -185,30 +185,54 @@ export default function AdminPage() {
                                     <td className="px-6 py-4 text-sm text-muted-foreground">
                                         {new Date(user.created_at).toLocaleDateString()}
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button
-                                            onClick={() => toggleAdmin(user.id)}
-                                            className="text-xs hover:text-amber-500 transition-colors"
-                                            title="Toggle Admin"
-                                        >
-                                            {user.is_super_admin ? 'Revogar Admin' : 'Tornar Admin'}
-                                        </button>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col gap-2 items-end">
+                                            {/* Admin Toggle */}
+                                            <button
+                                                onClick={() => toggleAdmin(user.id)}
+                                                className={`
+                                                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border
+                                                    ${user.is_super_admin
+                                                        ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'
+                                                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'}
+                                                `}
+                                            >
+                                                <Shield className="h-3 w-3" />
+                                                {user.is_super_admin ? 'Revogar Admin' : 'Tornar Admin'}
+                                            </button>
 
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <button
-                                                onClick={() => updatePlan(user.id, 'starter')}
-                                                disabled={loading}
-                                                className="text-[10px] px-2 py-1 bg-white/5 hover:bg-white/10 rounded transition-colors text-muted-foreground hover:text-white border border-white/5"
-                                            >
-                                                Set Starter
-                                            </button>
-                                            <button
-                                                onClick={() => updatePlan(user.id, 'pro')}
-                                                disabled={loading}
-                                                className="text-[10px] px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded transition-colors text-primary border border-primary/20"
-                                            >
-                                                Set Pro
-                                            </button>
+                                            {/* Plan Management */}
+                                            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5">
+                                                <button
+                                                    onClick={() => updatePlan(user.id, 'starter')}
+                                                    title="Mudar para Starter"
+                                                    disabled={loading}
+                                                    className={`
+                                                        p-1.5 rounded-md transition-all flex items-center gap-1.5
+                                                        ${user.subscription?.planName === 'Starter'
+                                                            ? 'bg-slate-700 text-white shadow-sm'
+                                                            : 'text-muted-foreground hover:bg-white/5 hover:text-white'}
+                                                    `}
+                                                >
+                                                    <Zap className="h-3.5 w-3.5" />
+                                                    <span className="text-[10px] font-medium">Starter</span>
+                                                </button>
+                                                <div className="w-px h-3 bg-white/10" />
+                                                <button
+                                                    onClick={() => updatePlan(user.id, 'pro')}
+                                                    title="Mudar para Pro"
+                                                    disabled={loading}
+                                                    className={`
+                                                        p-1.5 rounded-md transition-all flex items-center gap-1.5
+                                                        ${user.subscription?.planName === 'Pro'
+                                                            ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/20'
+                                                            : 'text-muted-foreground hover:bg-violet-600/10 hover:text-violet-400'}
+                                                    `}
+                                                >
+                                                    <Crown className="h-3.5 w-3.5" />
+                                                    <span className="text-[10px] font-medium">Pro</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
