@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle } from 'lucide-react'
+import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle, ListTodo, FileText } from 'lucide-react'
 import { addTag, removeTag, addNote, getNotes, getReminders, createReminder, toggleReminder, getPipelines, updateContactStage, getContactDeal } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -74,8 +74,7 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
         }
 
         // 2. Add to contact
-        await addTag(contact.id, tagToCreate) // Note: Case sensitive? Best to use the formatted name causing issues?
-        // Let's rely on the user input for now or match the created tag name.
+        await addTag(contact.id, tagToCreate)
 
         setNewTag('')
         setShowTagSuggestions(false)
@@ -137,21 +136,39 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
         }
     }
 
+    const tabs = [
+        { id: 'info' as const, label: 'Geral', icon: Tag },
+        { id: 'notes' as const, label: 'Notas', icon: FileText },
+        { id: 'reminders' as const, label: 'Tarefas', icon: ListTodo },
+    ]
+
     return (
-        <div className="w-80 border-l border-white/5 bg-slate-900/50 flex flex-col h-full animate-in slide-in-from-right duration-300">
+        <div className="w-80 border-l border-border/50 bg-card/50 flex flex-col h-full animate-in slide-in-from-right duration-300">
             {/* Header */}
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h3 className="font-bold text-white">Detalhes</h3>
-                <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <div className="p-4 border-b border-border/50 flex items-center justify-between bg-muted/30">
+                <h3 className="font-bold text-foreground">Detalhes</h3>
+                <button onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted p-2 rounded-lg transition-colors">
                     <X className="h-5 w-5" />
                 </button>
             </div>
 
             {/* Content Tabs Switcher */}
-            <div className="flex border-b border-white/5">
-                <button onClick={() => setActiveTab('info')} className={cn("flex-1 py-3 text-xs font-bold uppercase", activeTab === 'info' ? "text-violet-400 border-b-2 border-violet-500 bg-white/5" : "text-slate-500")}>Geral</button>
-                <button onClick={() => setActiveTab('notes')} className={cn("flex-1 py-3 text-xs font-bold uppercase", activeTab === 'notes' ? "text-violet-400 border-b-2 border-violet-500 bg-white/5" : "text-slate-500")}>Notas</button>
-                <button onClick={() => setActiveTab('reminders')} className={cn("flex-1 py-3 text-xs font-bold uppercase", activeTab === 'reminders' ? "text-violet-400 border-b-2 border-violet-500 bg-white/5" : "text-slate-500")}>Tarefas</button>
+            <div className="flex border-b border-border/50">
+                {tabs.map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={cn(
+                            "flex-1 py-3 text-xs font-bold uppercase flex items-center justify-center gap-1.5 transition-all duration-200 border-b-2 border-transparent",
+                            activeTab === tab.id
+                                ? "text-primary border-primary bg-primary/5"
+                                : "text-muted-foreground hover:text-primary/80"
+                        )}
+                    >
+                        <tab.icon className="h-3.5 w-3.5" />
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -161,8 +178,8 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                     <>
                         {/* Tags Info */}
                         <div className="mb-6">
-                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                                <Tag className="h-3 w-3" /> Etiquetas
+                            <label className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-1.5 block">
+                                <Tag className="h-3.5 w-3.5" /> Etiquetas
                             </label>
 
                             {/* Tags List */}
@@ -171,26 +188,26 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                     // Find standard tag color if exists
                                     const standardTag = availableTags.find(t => t.name === tagName)
                                     const colorMap: any = {
-                                        violet: 'bg-violet-500/20 text-violet-300',
-                                        blue: 'bg-blue-500/20 text-blue-300',
-                                        green: 'bg-green-500/20 text-green-300',
-                                        amber: 'bg-amber-500/20 text-amber-300',
-                                        red: 'bg-red-500/20 text-red-300',
-                                        pink: 'bg-pink-500/20 text-pink-300',
-                                        cyan: 'bg-cyan-500/20 text-cyan-300',
+                                        violet: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+                                        blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                                        green: 'bg-green-500/20 text-green-400 border-green-500/30',
+                                        amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                                        red: 'bg-red-500/20 text-red-400 border-red-500/30',
+                                        pink: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+                                        cyan: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
                                     }
-                                    const colorClass = standardTag ? colorMap[standardTag.color] : 'bg-slate-700 text-slate-300'
+                                    const colorClass = standardTag ? colorMap[standardTag.color] : 'bg-muted text-muted-foreground border-border'
 
                                     return (
-                                        <span key={tagName} className={cn("px-2 py-1 rounded text-xs flex items-center gap-1 group transition-colors", colorClass)}>
+                                        <span key={tagName} className={cn("px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 group transition-all duration-200 border", colorClass)}>
                                             {tagName}
-                                            <button onClick={() => handleRemoveTag(tagName)} className="hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleRemoveTag(tagName)} className="hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <X className="h-3 w-3" />
                                             </button>
                                         </span>
                                     )
                                 })}
-                                {(!contact.tags || contact.tags.length === 0) && <span className="text-slate-600 text-xs italic">Sem etiquetas</span>}
+                                {(!contact.tags || contact.tags.length === 0) && <span className="text-muted-foreground text-xs italic">Sem etiquetas</span>}
                             </div>
 
                             {/* Tag Input with Suggestions */}
@@ -200,42 +217,75 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                         value={newTag}
                                         onChange={e => setNewTag(e.target.value)}
                                         onFocus={() => setShowTagSuggestions(true)}
-                                        // onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)} // Delay for click to register
                                         placeholder="Adicionar etiqueta..."
-                                        className="flex-1 bg-slate-800 border-none rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:ring-1 focus:ring-violet-500 outline-none"
+                                        className="flex-1 bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
                                     />
-                                    <button type="submit" className="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg text-white">
+                                    <button type="submit" className="bg-primary hover:bg-primary/90 p-2.5 rounded-xl text-primary-foreground transition-colors">
                                         <Plus className="h-4 w-4" />
                                     </button>
                                 </form>
 
                                 {/* Suggestions Popover */}
-                                {showTagSuggestions && newTag && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-white/10 rounded-lg shadow-xl overflow-hidden z-30 max-h-40 overflow-y-auto">
+                                {showTagSuggestions && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 glass-heavy border border-border/50 rounded-xl shadow-xl overflow-hidden z-30 max-h-[180px] overflow-y-auto scrollbar-thin">
+                                        {/* Available Tags Header */}
+                                        {!newTag && availableTags.filter(t => !contact.tags?.includes(t.name)).length > 0 && (
+                                            <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase bg-muted/30 border-b border-border/30">
+                                                Etiquetas disponíveis
+                                            </div>
+                                        )}
+                                        
                                         {availableTags
-                                            .filter(t => t.name.toLowerCase().includes(newTag.toLowerCase()) && !contact.tags?.includes(t.name))
-                                            .map(tag => (
-                                                <button
-                                                    key={tag.id}
-                                                    onClick={() => {
-                                                        addTag(contact.id, tag.name)
-                                                        setNewTag('')
-                                                        setShowTagSuggestions(false)
-                                                    }}
-                                                    className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white flex items-center gap-2"
-                                                >
-                                                    <div className={cn("w-2 h-2 rounded-full", `bg-${tag.color}-500`)} />
-                                                    {tag.name}
-                                                </button>
-                                            ))
+                                            .filter(t => {
+                                                // Filter out tags already on contact
+                                                if (contact.tags?.includes(t.name)) return false
+                                                // If user typed something, filter by search
+                                                if (newTag) return t.name.toLowerCase().includes(newTag.toLowerCase())
+                                                return true
+                                            })
+                                            .map(tag => {
+                                                const colorMap: any = {
+                                                    violet: 'bg-violet-500',
+                                                    blue: 'bg-blue-500',
+                                                    green: 'bg-green-500',
+                                                    amber: 'bg-amber-500',
+                                                    red: 'bg-red-500',
+                                                    pink: 'bg-pink-500',
+                                                    cyan: 'bg-cyan-500',
+                                                }
+                                                return (
+                                                    <button
+                                                        key={tag.id}
+                                                        onClick={() => {
+                                                            addTag(contact.id, tag.name)
+                                                            setNewTag('')
+                                                            setShowTagSuggestions(false)
+                                                            toast.success('Etiqueta adicionada')
+                                                        }}
+                                                        className="w-full text-left px-3 py-2.5 text-xs text-foreground hover:bg-primary/10 hover:text-primary flex items-center gap-2.5 transition-colors"
+                                                    >
+                                                        <div className={cn("w-3 h-3 rounded-full shadow-sm", colorMap[tag.color] || 'bg-muted')} />
+                                                        <span className="flex-1">{tag.name}</span>
+                                                    </button>
+                                                )
+                                            })
                                         }
-                                        {/* Allow creating new tag on the fly? Probably yes for UX */}
-                                        {!availableTags.some(t => t.name.toLowerCase() === newTag.toLowerCase()) && (
+                                        
+                                        {/* Empty state when no tags match */}
+                                        {availableTags.filter(t => !contact.tags?.includes(t.name) && (!newTag || t.name.toLowerCase().includes(newTag.toLowerCase()))).length === 0 && !newTag && (
+                                            <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                                                Todas as etiquetas já estão aplicadas
+                                            </div>
+                                        )}
+                                        
+                                        {/* Allow creating new tag on the fly */}
+                                        {newTag && !availableTags.some(t => t.name.toLowerCase() === newTag.toLowerCase()) && (
                                             <button
-                                                onClick={handleAddTag} // Just adds string tag for now, or could create standard tag
-                                                className="w-full text-left px-3 py-2 text-xs text-slate-400 hover:bg-white/5 hover:text-white italic border-t border-white/5"
+                                                onClick={handleAddTag}
+                                                className="w-full text-left px-3 py-2.5 text-xs text-primary hover:bg-primary/10 font-medium border-t border-border/50 transition-colors flex items-center gap-2"
                                             >
-                                                Criar "{newTag}"
+                                                <Plus className="h-3.5 w-3.5" />
+                                                Criar nova etiqueta "{newTag}"
                                             </button>
                                         )}
                                     </div>
@@ -248,15 +298,14 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                         </div>
 
                         {/* CRM Info */}
-                        <div className="pt-4 border-t border-white/5">
-                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" /> Funil de Vendas
+                        <div className="pt-4 border-t border-border/50">
+                            <label className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-1.5 block">
+                                <AlertCircle className="h-3.5 w-3.5" /> Funil de Vendas
                             </label>
 
-                            {/* Pipeline Selector (Optional, hardcoded select for now if multiple pipelines) */}
                             {/* Stage Selector */}
                             <select
-                                className="w-full bg-slate-800 border-none rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-violet-500 outline-none"
+                                className="w-full bg-muted/50 border border-border rounded-xl px-3 py-3 text-sm text-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
                                 onChange={(e) => handleStageChange(e.target.value)}
                                 value={selectedStageId}
                             >
@@ -270,6 +319,49 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                 ))}
                             </select>
                         </div>
+
+                        {/* Recent Notes Preview */}
+                        <div className="pt-4 border-t border-border/50">
+                            <label className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-1.5 block">
+                                <FileText className="h-3.5 w-3.5" /> Últimas Notas
+                            </label>
+
+                            {notes.length > 0 ? (
+                                <div className="space-y-2">
+                                    {notes.slice(0, 3).map((note, index) => (
+                                        <div 
+                                            key={note.id} 
+                                            className="bg-muted/20 p-3 rounded-lg border border-border/30 text-xs animate-fade-in"
+                                            style={{ animationDelay: `${index * 50}ms` }}
+                                        >
+                                            <p className="text-foreground line-clamp-2 leading-relaxed">{note.content}</p>
+                                            <p className="text-[10px] text-muted-foreground mt-2">
+                                                {format(new Date(note.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                                            </p>
+                                        </div>
+                                    ))}
+                                    
+                                    {notes.length > 3 && (
+                                        <button
+                                            onClick={() => setActiveTab('notes')}
+                                            className="w-full text-xs text-primary hover:text-primary/80 font-medium py-2 hover:bg-primary/5 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            Ver mais ({notes.length - 3} notas)
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="text-center py-4">
+                                    <p className="text-xs text-muted-foreground italic">Nenhuma nota registrada</p>
+                                    <button
+                                        onClick={() => setActiveTab('notes')}
+                                        className="text-xs text-primary hover:text-primary/80 font-medium mt-2 transition-colors"
+                                    >
+                                        Adicionar nota
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
 
@@ -277,29 +369,40 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                 {/* --- TAB: NOTES --- */}
                 {activeTab === 'notes' && (
                     <div className="space-y-4">
-                        <form onSubmit={handleAddNote} className="space-y-2">
+                        <form onSubmit={handleAddNote} className="space-y-3">
                             <textarea
                                 value={newNote}
                                 onChange={e => setNewNote(e.target.value)}
                                 placeholder="Escreva uma observação interna..."
-                                className="w-full bg-slate-800 border-none rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:ring-1 focus:ring-violet-500 outline-none min-h-[80px]"
+                                className="w-full bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none min-h-[100px] transition-all duration-200 resize-none"
                             />
-                            <button type="submit" className="w-full bg-violet-600 hover:bg-violet-700 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-colors">
+                            <button type="submit" className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 py-2.5 rounded-xl text-sm font-bold text-primary-foreground shadow-lg shadow-primary/20 transition-all duration-200">
                                 Salvar Nota
                             </button>
                         </form>
 
                         <div className="space-y-3">
-                            {notes.map(note => (
-                                <div key={note.id} className="bg-slate-800/50 p-3 rounded-lg border border-white/5 text-sm">
-                                    <p className="text-slate-300 whitespace-pre-wrap">{note.content}</p>
-                                    <div className="mt-2 flex justify-between items-center text-[10px] text-slate-500">
-                                        <span>{note.author?.name || 'Desconhecido'}</span>
+                            {notes.map((note, index) => (
+                                <div 
+                                    key={note.id} 
+                                    className="bg-muted/30 p-4 rounded-xl border border-border/50 text-sm animate-fade-in hover:border-primary/20 transition-all duration-200"
+                                    style={{ animationDelay: `${index * 50}ms` }}
+                                >
+                                    <p className="text-foreground whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                                    <div className="mt-3 flex justify-between items-center text-[10px] text-muted-foreground pt-2 border-t border-border/30">
+                                        <span className="font-medium">{note.author?.name || 'Desconhecido'}</span>
                                         <span>{format(new Date(note.created_at), "dd/MM HH:mm", { locale: ptBR })}</span>
                                     </div>
                                 </div>
                             ))}
-                            {notes.length === 0 && <p className="text-center text-slate-600 text-xs py-4">Nenhuma nota registrada.</p>}
+                            {notes.length === 0 && (
+                                <div className="text-center py-8">
+                                    <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                                        <FileText className="h-6 w-6 text-muted-foreground/50" />
+                                    </div>
+                                    <p className="text-muted-foreground text-xs">Nenhuma nota registrada.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -308,39 +411,55 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                 {/* --- TAB: REMINDERS --- */}
                 {activeTab === 'reminders' && (
                     <div className="space-y-4">
-                        <form onSubmit={handleAddReminder} className="space-y-2 bg-slate-800/30 p-3 rounded-lg border border-white/5">
+                        <form onSubmit={handleAddReminder} className="space-y-3 bg-muted/30 p-4 rounded-xl border border-border/50">
                             <input
                                 value={newReminderTitle}
                                 onChange={e => setNewReminderTitle(e.target.value)}
                                 placeholder="O que lembrar?"
-                                className="w-full bg-slate-900 border-none rounded px-3 py-2 text-sm text-white focus:ring-1 focus:ring-violet-500 outline-none"
+                                className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
                             />
                             <input
                                 type="datetime-local"
                                 value={newReminderDate}
                                 onChange={e => setNewReminderDate(e.target.value)}
-                                className="w-full bg-slate-900 border-none rounded px-3 py-2 text-sm text-slate-300 focus:ring-1 focus:ring-violet-500 outline-none"
+                                className="w-full bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
                             />
-                            <button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 py-1.5 rounded text-xs font-bold text-black shadow transition-colors">
+                            <button type="submit" className="w-full bg-warning hover:bg-warning/90 py-2.5 rounded-xl text-sm font-bold text-warning-foreground shadow-lg shadow-warning/20 transition-all duration-200">
                                 Agendar
                             </button>
                         </form>
 
                         <div className="space-y-2">
-                            {reminders.map(rem => (
-                                <div key={rem.id} className={cn("flex items-start gap-3 p-3 rounded-lg border transition-all", rem.completed ? "bg-green-900/10 border-green-500/20 opacity-60" : "bg-slate-800/50 border-white/5")}>
-                                    <button onClick={() => handleToggleReminder(rem.id, rem.completed)} className="mt-0.5 text-slate-400 hover:text-green-500">
-                                        {rem.completed ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Circle className="h-4 w-4" />}
+                            {reminders.map((rem, index) => (
+                                <div 
+                                    key={rem.id} 
+                                    className={cn(
+                                        "flex items-start gap-3 p-4 rounded-xl border transition-all duration-200 animate-fade-in",
+                                        rem.completed 
+                                            ? "bg-success/5 border-success/20 opacity-60" 
+                                            : "bg-muted/30 border-border/50 hover:border-warning/30"
+                                    )}
+                                    style={{ animationDelay: `${index * 50}ms` }}
+                                >
+                                    <button onClick={() => handleToggleReminder(rem.id, rem.completed)} className="mt-0.5 text-muted-foreground hover:text-success transition-colors">
+                                        {rem.completed ? <CheckCircle2 className="h-5 w-5 text-success" /> : <Circle className="h-5 w-5" />}
                                     </button>
                                     <div className="flex-1">
-                                        <p className={cn("text-sm font-medium", rem.completed ? "text-slate-500 line-through" : "text-white")}>{rem.title}</p>
-                                        <p className="text-[10px] text-amber-500/80 flex items-center gap-1 mt-1">
+                                        <p className={cn("text-sm font-medium", rem.completed ? "text-muted-foreground line-through" : "text-foreground")}>{rem.title}</p>
+                                        <p className="text-[11px] text-warning flex items-center gap-1.5 mt-1.5">
                                             <Clock className="h-3 w-3" /> {format(new Date(rem.due_at), "dd/MM/yy HH:mm", { locale: ptBR })}
                                         </p>
                                     </div>
                                 </div>
                             ))}
-                            {reminders.length === 0 && <p className="text-center text-slate-600 text-xs py-4">Sem lembretes pendentes.</p>}
+                            {reminders.length === 0 && (
+                                <div className="text-center py-8">
+                                    <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                                        <ListTodo className="h-6 w-6 text-muted-foreground/50" />
+                                    </div>
+                                    <p className="text-muted-foreground text-xs">Sem lembretes pendentes.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

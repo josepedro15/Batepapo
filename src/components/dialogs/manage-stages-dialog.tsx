@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Settings, X, Plus, GripVertical, Pencil, Trash2, Check } from 'lucide-react'
+import { Settings, X, Plus, GripVertical, Pencil, Trash2, Check, Layers } from 'lucide-react'
 import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { createStage, updateStage, reorderStages, deleteStage } from '@/app/dashboard/kanban/stage-actions'
 import { toast } from 'sonner'
+import { createPortal } from 'react-dom'
+import { cn } from '@/lib/utils'
 
 interface Stage {
     id: string
@@ -51,33 +53,33 @@ function SortableStageItem({ stage, onEdit, onDelete }: { stage: Stage, onEdit: 
         <div
             ref={setNodeRef}
             style={style}
-            className="flex items-center gap-3 bg-slate-900/50 border border-slate-700 rounded-lg p-3 hover:bg-slate-900/70 transition-colors"
+            className="flex items-center gap-3 bg-muted/50 border border-border rounded-xl p-3 hover:bg-muted/70 transition-colors"
         >
             <button
                 {...attributes}
                 {...listeners}
-                className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300"
+                className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
             >
                 <GripVertical className="h-5 w-5" />
             </button>
 
-            <div className={`h-4 w-4 rounded-full ${stage.color}`} />
+            <div className={`h-4 w-4 rounded-full ${stage.color} shadow-sm`} />
 
             <div className="flex-1">
-                <div className="font-medium text-white">{stage.name}</div>
-                <div className="text-xs text-slate-500">{dealCount} {dealCount === 1 ? 'negócio' : 'negócios'}</div>
+                <div className="font-medium text-foreground">{stage.name}</div>
+                <div className="text-xs text-muted-foreground">{dealCount} {dealCount === 1 ? 'negócio' : 'negócios'}</div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-1">
                 <button
                     onClick={onEdit}
-                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
                 >
                     <Pencil className="h-4 w-4" />
                 </button>
                 <button
                     onClick={onDelete}
-                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                 >
                     <Trash2 className="h-4 w-4" />
                 </button>
@@ -94,8 +96,12 @@ function ColorPicker({ value, onChange }: { value: string, onChange: (color: str
                     key={color.value}
                     type="button"
                     onClick={() => onChange(color.value)}
-                    className={`h-8 w-8 rounded-full ${color.value} ${value === color.value ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'hover:scale-110'
-                        } transition-all`}
+                    className={cn(
+                        `h-8 w-8 rounded-full ${color.value} transition-all`,
+                        value === color.value 
+                            ? 'ring-2 ring-primary ring-offset-2 ring-offset-card scale-110' 
+                            : 'hover:scale-110'
+                    )}
                     title={color.label}
                 />
             ))}
@@ -207,32 +213,37 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
         setEditColor(stage.color)
     }
 
-    if (!open) {
-        return (
-            <button
-                onClick={() => setOpen(true)}
-                className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold shadow-lg transition-all flex items-center gap-2"
-            >
-                <Settings className="h-4 w-4" /> Gerenciar Estágios
-            </button>
-        )
-    }
-
-    return (
+    const modalContent = open ? (
         <>
             {/* Main Dialog */}
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div className="glass p-6 rounded-2xl border border-white/5 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div 
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                onClick={() => setOpen(false)}
+            >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                
+                <div 
+                    className="relative bg-card border border-border/50 p-6 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 scrollbar-thin"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-2xl font-bold text-white">Gerenciar Estágios</h2>
-                        <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-white">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
+                                <Layers className="h-5 w-5 text-primary-foreground" />
+                            </div>
+                            <h2 className="text-xl font-bold text-foreground">Gerenciar Estágios</h2>
+                        </div>
+                        <button 
+                            onClick={() => setOpen(false)} 
+                            className="text-muted-foreground hover:text-foreground p-2 hover:bg-muted rounded-lg transition-colors"
+                        >
                             <X className="h-5 w-5" />
                         </button>
                     </div>
 
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                         <SortableContext items={stages.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-3 mb-6">
+                            <div className="space-y-2 mb-6">
                                 {stages.map(stage => (
                                     <SortableStageItem
                                         key={stage.id}
@@ -247,26 +258,27 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
 
                     {/* Create New Stage */}
                     {isCreating ? (
-                        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 space-y-3">
+                        <div className="bg-muted/30 border border-border rounded-xl p-4 space-y-4">
                             <input
                                 type="text"
                                 placeholder="Nome do estágio"
                                 value={newStageName}
                                 onChange={(e) => setNewStageName(e.target.value)}
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                                className="w-full bg-muted/50 border border-border rounded-xl p-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                autoFocus
                             />
                             <ColorPicker value={newStageColor} onChange={setNewStageColor} />
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setIsCreating(false)}
-                                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition-all"
+                                    className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-2.5 rounded-xl transition-all"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     onClick={handleCreateStage}
                                     disabled={loading}
-                                    className="flex-1 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-2"
+                                    className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 disabled:opacity-50 text-primary-foreground font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
                                 >
                                     <Check className="h-4 w-4" /> {loading ? 'Criando...' : 'Criar'}
                                 </button>
@@ -275,7 +287,7 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
                     ) : (
                         <button
                             onClick={() => setIsCreating(true)}
-                            className="w-full bg-slate-900/50 border border-dashed border-slate-700 hover:border-violet-500 hover:bg-slate-900/70 text-slate-400 hover:text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2"
+                            className="w-full bg-muted/30 border border-dashed border-border hover:border-primary hover:bg-muted/50 text-muted-foreground hover:text-foreground font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                         >
                             <Plus className="h-5 w-5" /> Novo Estágio
                         </button>
@@ -285,42 +297,53 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
 
             {/* Edit Dialog */}
             {editingStage && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="glass p-6 rounded-2xl border border-white/5 w-full max-w-md">
+                <div 
+                    className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setEditingStage(null)}
+                >
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                    
+                    <div 
+                        className="relative bg-card border border-border/50 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-white">Editar Estágio</h3>
-                            <button onClick={() => setEditingStage(null)} className="text-slate-400 hover:text-white">
+                            <h3 className="text-lg font-bold text-foreground">Editar Estágio</h3>
+                            <button 
+                                onClick={() => setEditingStage(null)} 
+                                className="text-muted-foreground hover:text-foreground p-2 hover:bg-muted rounded-lg transition-colors"
+                            >
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
 
                         <div className="space-y-4">
                             <div>
-                                <label className="text-sm font-medium text-slate-300 mb-2 block">Nome</label>
+                                <label className="text-sm font-medium text-muted-foreground mb-2 block">Nome</label>
                                 <input
                                     type="text"
                                     value={editName}
                                     onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                                    className="w-full bg-muted/50 border border-border rounded-xl p-3 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="text-sm font-medium text-slate-300 mb-2 block">Cor</label>
+                                <label className="text-sm font-medium text-muted-foreground mb-2 block">Cor</label>
                                 <ColorPicker value={editColor} onChange={setEditColor} />
                             </div>
 
                             <div className="flex gap-3 pt-4">
                                 <button
                                     onClick={() => setEditingStage(null)}
-                                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-all"
+                                    className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-3 rounded-xl transition-all"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     onClick={handleUpdateStage}
                                     disabled={loading}
-                                    className="flex-1 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all"
+                                    className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 disabled:opacity-50 text-primary-foreground font-bold py-3 rounded-xl transition-all"
                                 >
                                     {loading ? 'Salvando...' : 'Salvar'}
                                 </button>
@@ -332,19 +355,30 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
 
             {/* Delete Confirmation Dialog */}
             {deletingStage && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="glass p-6 rounded-2xl border border-white/5 w-full max-w-md">
+                <div 
+                    className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setDeletingStage(null)}
+                >
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                    
+                    <div 
+                        className="relative bg-card border border-border/50 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-white">Confirmar Exclusão</h3>
-                            <button onClick={() => setDeletingStage(null)} className="text-slate-400 hover:text-white">
+                            <h3 className="text-lg font-bold text-foreground">Confirmar Exclusão</h3>
+                            <button 
+                                onClick={() => setDeletingStage(null)} 
+                                className="text-muted-foreground hover:text-foreground p-2 hover:bg-muted rounded-lg transition-colors"
+                            >
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
 
-                        <p className="text-slate-300 mb-6">
-                            Tem certeza que deseja excluir o estágio <strong className="text-white">"{deletingStage.name}"</strong>?
+                        <p className="text-muted-foreground mb-6">
+                            Tem certeza que deseja excluir o estágio <strong className="text-foreground">"{deletingStage.name}"</strong>?
                             {deletingStage.deals && deletingStage.deals.length > 0 && (
-                                <span className="block mt-2 text-red-400">
+                                <span className="block mt-2 text-destructive">
                                     ⚠️ Este estágio contém {deletingStage.deals.length} negócio(s). Não é possível excluir.
                                 </span>
                             )}
@@ -353,14 +387,14 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setDeletingStage(null)}
-                                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-all"
+                                className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-3 rounded-xl transition-all"
                             >
                                 Cancelar
                             </button>
                             <button
                                 onClick={handleDeleteStage}
                                 disabled={loading || (deletingStage.deals && deletingStage.deals.length > 0)}
-                                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all"
+                                className="flex-1 bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-destructive-foreground font-bold py-3 rounded-xl transition-all"
                             >
                                 {loading ? 'Excluindo...' : 'Excluir'}
                             </button>
@@ -368,6 +402,19 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
                     </div>
                 </div>
             )}
+        </>
+    ) : null
+
+    return (
+        <>
+            <button
+                onClick={() => setOpen(true)}
+                className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
+            >
+                <Settings className="h-4 w-4" /> Gerenciar Estágios
+            </button>
+            
+            {typeof window !== 'undefined' && modalContent && createPortal(modalContent, document.body)}
         </>
     )
 }

@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
 import { toast } from 'sonner'
-import { ImageDialog } from '@/components/dialogs/image-dialog'
+import { ImageGalleryDialog } from '@/components/dialogs/image-gallery-dialog'
+import { MessageImageGroup } from '@/components/chat/message-image-group'
+import { AudioPlayer } from '@/components/chat/audio-player'
 import MicRecorder from 'mic-recorder-to-mp3'
 
 // Types (simplified for this file)
@@ -53,7 +55,11 @@ export function ChatInterface({
     // Media State
     const [isRecording, setIsRecording] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
-    const [clickedImage, setClickedImage] = useState<string | null>(null)
+    
+    // Gallery State
+    const [galleryImages, setGalleryImages] = useState<string[]>([])
+    const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
+    const [showGallery, setShowGallery] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const recorderRef = useRef<MicRecorder | null>(null)
 
@@ -275,16 +281,89 @@ export function ChatInterface({
         return 'mine'
     }
 
+    const tabs = [
+        { id: 'mine' as const, label: 'Meus', count: initialMyChats?.length || 0, color: 'primary' },
+        { id: 'awaiting' as const, label: 'Fila', count: initialAwaitingChats?.length || 0, color: 'warning' },
+        ...(userRole === 'owner' || userRole === 'manager' ? [{ id: 'all' as const, label: 'Todos', count: initialAllChats?.length || 0, color: 'accent' }] : []),
+        { id: 'finished' as const, label: 'Finalizados', count: initialFinishedChats?.length || 0, color: 'success' },
+    ]
+
+    const getTabColorClasses = (tabId: string, isActive: boolean) => {
+        const colors: Record<string, { active: string, inactive: string }> = {
+            mine: { active: 'text-primary border-primary bg-primary/5', inactive: 'text-muted-foreground hover:text-primary/80' },
+            awaiting: { active: 'text-warning border-warning bg-warning/5', inactive: 'text-muted-foreground hover:text-warning/80' },
+            all: { active: 'text-accent border-accent bg-accent/5', inactive: 'text-muted-foreground hover:text-accent/80' },
+            finished: { active: 'text-success border-success bg-success/5', inactive: 'text-muted-foreground hover:text-success/80' },
+        }
+        return isActive ? colors[tabId]?.active : colors[tabId]?.inactive
+    }
+
+    // Group consecutive image messages from same sender
+    type GroupedMessage = {
+        type: 'single'
+        message: Message
+    } | {
+        type: 'image-group'
+        senderType: 'user' | 'contact' | 'system'
+        images: string[]
+        firstMessageId: string
+    }
+
+    const groupedMessages = useMemo<GroupedMessage[]>(() => {
+        const result: GroupedMessage[] = []
+        let currentImageGroup: { senderType: 'user' | 'contact' | 'system'; images: string[]; firstMessageId: string } | null = null
+
+        for (const message of messages) {
+            if (message.media_type === 'image' && message.media_url) {
+                // Image message
+                if (currentImageGroup && currentImageGroup.senderType === message.sender_type) {
+                    // Same sender, add to group
+                    currentImageGroup.images.push(message.media_url)
+                } else {
+                    // New sender or first image, close previous group and start new
+                    if (currentImageGroup) {
+                        result.push({ type: 'image-group', ...currentImageGroup })
+                    }
+                    currentImageGroup = {
+                        senderType: message.sender_type,
+                        images: [message.media_url],
+                        firstMessageId: message.id
+                    }
+                }
+            } else {
+                // Non-image message, close any open image group
+                if (currentImageGroup) {
+                    result.push({ type: 'image-group', ...currentImageGroup })
+                    currentImageGroup = null
+                }
+                result.push({ type: 'single', message })
+            }
+        }
+
+        // Don't forget to add the last group if any
+        if (currentImageGroup) {
+            result.push({ type: 'image-group', ...currentImageGroup })
+        }
+
+        return result
+    }, [messages])
+
+    const openGallery = (images: string[], index: number) => {
+        setGalleryImages(images)
+        setGalleryInitialIndex(index)
+        setShowGallery(true)
+    }
+
     return (
-        <div className="flex h-full gap-6 rounded-2xl overflow-hidden glass border border-white/5">
+        <div className="flex h-full gap-0 rounded-2xl overflow-hidden glass animate-fade-in">
 
             {/* LEFT SIDEBAR: Contact List */}
-            <div className="w-80 flex flex-col border-r border-white/5 bg-slate-900/30">
+            <div className="w-80 flex flex-col border-r border-border/50 bg-card/30">
                 {/* Header with New Chat button */}
-                <div className="p-3 border-b border-white/5">
+                <div className="p-3 border-b border-border/50">
                     <button
                         onClick={() => setShowNewChatDialog(true)}
-                        className="w-full bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                        className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-300 shadow-lg shadow-primary/20"
                     >
                         <Plus className="h-4 w-4" />
                         Nova Conversa
@@ -292,63 +371,58 @@ export function ChatInterface({
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-white/5 overflow-x-auto scrollbar-hide">
-                    <button
-                        onClick={() => { setActiveTab('mine'); setSelectedContact(null) }}
-                        className={cn("px-4 py-4 text-sm font-bold transition-colors whitespace-nowrap flex-shrink-0", activeTab === 'mine' ? "text-violet-400 border-b-2 border-violet-500 bg-white/5" : "text-slate-500 hover:text-slate-300")}
-                    >
-                        Meus ({initialMyChats?.length || 0})
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('awaiting'); setSelectedContact(null) }}
-                        className={cn("px-4 py-4 text-sm font-bold transition-colors whitespace-nowrap flex-shrink-0", activeTab === 'awaiting' ? "text-amber-400 border-b-2 border-amber-500 bg-white/5" : "text-slate-500 hover:text-slate-300")}
-                    >
-                        Fila ({initialAwaitingChats?.length || 0})
-                    </button>
-                    {(userRole === 'owner' || userRole === 'manager') && (
+                <div className="flex border-b border-border/50 overflow-x-auto scrollbar-hide">
+                    {tabs.map(tab => (
                         <button
-                            onClick={() => { setActiveTab('all'); setSelectedContact(null) }}
-                            className={cn("px-4 py-4 text-sm font-bold transition-colors whitespace-nowrap flex-shrink-0", activeTab === 'all' ? "text-cyan-400 border-b-2 border-cyan-500 bg-white/5" : "text-slate-500 hover:text-slate-300")}
+                            key={tab.id}
+                            onClick={() => { setActiveTab(tab.id); setSelectedContact(null) }}
+                            className={cn(
+                                "px-4 py-3.5 text-sm font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 border-b-2 border-transparent",
+                                getTabColorClasses(tab.id, activeTab === tab.id)
+                            )}
                         >
-                            Todos ({initialAllChats?.length || 0})
+                            {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
                         </button>
-                    )}
-                    <button
-                        onClick={() => { setActiveTab('finished'); setSelectedContact(null) }}
-                        className={cn("px-4 py-4 text-sm font-bold transition-colors whitespace-nowrap flex-shrink-0", activeTab === 'finished' ? "text-emerald-400 border-b-2 border-emerald-500 bg-white/5" : "text-slate-500 hover:text-slate-300")}
-                    >
-                        Finalizados ({initialFinishedChats?.length || 0})
-                    </button>
+                    ))}
                 </div>
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto">
-                    {(activeTab === 'mine' ? initialMyChats : activeTab === 'awaiting' ? initialAwaitingChats : activeTab === 'all' ? initialAllChats : initialFinishedChats)?.map(contact => (
+                    {(activeTab === 'mine' ? initialMyChats : activeTab === 'awaiting' ? initialAwaitingChats : activeTab === 'all' ? initialAllChats : initialFinishedChats)?.map((contact, index) => (
                         <button
                             key={contact.id}
                             onClick={() => setSelectedContact(contact)}
                             className={cn(
-                                "w-full text-left p-4 hover:bg-white/5 transition-colors border-b border-white/5",
-                                selectedContact?.id === contact.id ? "bg-violet-500/10 border-l-2 border-l-violet-500" : ""
+                                "w-full text-left p-4 hover:bg-muted/30 transition-all duration-200 border-b border-border/30 animate-fade-in",
+                                selectedContact?.id === contact.id ? "bg-primary/10 border-l-2 border-l-primary" : ""
                             )}
+                            style={{ animationDelay: `${index * 30}ms` }}
                         >
                             <div className="flex items-center gap-3 mb-1">
-                                <div className="relative h-10 w-10 flex-shrink-0">
+                                <div className="relative h-11 w-11 flex-shrink-0">
                                     {contact.avatar_url ? (
-                                        <img src={contact.avatar_url} alt={contact.name} className="h-10 w-10 rounded-full object-cover" />
+                                        <img src={contact.avatar_url} alt={contact.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border/50" />
                                     ) : (
-                                        <div className="h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm">
-                                            {contact.name.charAt(0)}
+                                        <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
+                                            {contact.name.charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+                                    {activeTab === 'awaiting' && (
+                                        <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-warning flex items-center justify-center">
+                                            <Clock className="h-2.5 w-2.5 text-warning-foreground" />
+                                        </div>
+                                    )}
+                                    {activeTab === 'finished' && (
+                                        <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-success flex items-center justify-center">
+                                            <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
                                         </div>
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
-                                        <span className="font-bold text-slate-200 truncate">{contact.name}</span>
-                                        {activeTab === 'awaiting' && <Clock className="h-3 w-3 text-amber-500 flex-shrink-0 ml-1" />}
-                                        {activeTab === 'finished' && <CheckCircle className="h-3 w-3 text-emerald-500 flex-shrink-0 ml-1" />}
+                                        <span className="font-bold text-foreground truncate">{contact.name}</span>
                                     </div>
-                                    <p className="text-xs text-slate-500 truncate">{contact.phone}</p>
+                                    <p className="text-xs text-muted-foreground truncate">{contact.phone}</p>
                                 </div>
                             </div>
                         </button>
@@ -356,40 +430,49 @@ export function ChatInterface({
 
                     {/* Empty States */}
                     {activeTab === 'mine' && initialMyChats?.length === 0 && (
-                        <div className="p-8 text-center text-slate-500 text-sm">
-                            Você não tem atendimentos ativos.
+                        <div className="p-8 text-center">
+                            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                                <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
+                            </div>
+                            <p className="text-muted-foreground text-sm">Você não tem atendimentos ativos.</p>
                         </div>
                     )}
                     {activeTab === 'awaiting' && initialAwaitingChats?.length === 0 && (
-                        <div className="p-8 text-center text-slate-500 text-sm">
-                            Fila vazia! 🎉
+                        <div className="p-8 text-center">
+                            <div className="h-16 w-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
+                                <span className="text-2xl">🎉</span>
+                            </div>
+                            <p className="text-muted-foreground text-sm">Fila vazia!</p>
                         </div>
                     )}
                     {activeTab === 'finished' && initialFinishedChats?.length === 0 && (
-                        <div className="p-8 text-center text-slate-500 text-sm">
-                            Nenhum atendimento finalizado.
+                        <div className="p-8 text-center">
+                            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                                <CheckCircle className="h-8 w-8 text-muted-foreground/50" />
+                            </div>
+                            <p className="text-muted-foreground text-sm">Nenhum atendimento finalizado.</p>
                         </div>
                     )}
                 </div>
             </div>
 
             {/* RIGHT AREA: Chat Window */}
-            <div className="flex-1 flex flex-col bg-slate-900/20">
+            <div className="flex-1 flex flex-col bg-background/50">
                 {selectedContact ? (
                     <>
                         {/* Header */}
-                        <div className="h-16 border-b border-white/5 flex items-center px-6 justify-between bg-white/5 backdrop-blur-md">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-violet-500 to-cyan-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                        <div className="h-[72px] border-b border-border/50 flex items-center px-6 justify-between bg-card/50 backdrop-blur-md">
+                            <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary via-primary/80 to-accent/60 flex items-center justify-center text-primary-foreground font-bold overflow-hidden shadow-lg shadow-primary/20">
                                     {selectedContact.avatar_url ? (
                                         <img src={selectedContact.avatar_url} alt={selectedContact.name} className="h-full w-full object-cover" />
                                     ) : (
-                                        selectedContact.name.charAt(0)
+                                        selectedContact.name.charAt(0).toUpperCase()
                                     )}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-white">{selectedContact.name}</h3>
-                                    <p className="text-xs text-slate-400">{selectedContact.phone}</p>
+                                    <h3 className="font-bold text-foreground text-lg">{selectedContact.name}</h3>
+                                    <p className="text-xs text-muted-foreground font-mono">{selectedContact.phone}</p>
                                 </div>
                             </div>
 
@@ -400,7 +483,7 @@ export function ChatInterface({
                                             await assignChat(selectedContact.id)
                                             setActiveTab('mine') // Optimistic switch
                                         }}
-                                        className="bg-amber-500 hover:bg-amber-600 text-black px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-amber-500/20 transition-all"
+                                        className="bg-warning hover:bg-warning/90 text-warning-foreground px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-warning/20 transition-all duration-200"
                                     >
                                         Assumir Atendimento
                                     </button>
@@ -410,7 +493,7 @@ export function ChatInterface({
                                     <>
                                         <button
                                             onClick={handleFinishChat}
-                                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                                            className="bg-success hover:bg-success/90 text-success-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200 shadow-lg shadow-success/20"
                                             title="Finalizar Atendimento"
                                         >
                                             <CheckCircle className="h-4 w-4" /> Finalizar
@@ -418,7 +501,7 @@ export function ChatInterface({
                                         {members.length > 0 && (
                                             <button
                                                 onClick={() => setShowTransferDialog(true)}
-                                                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                                                className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200"
                                             >
                                                 <ArrowRight className="h-4 w-4" /> Transferir
                                             </button>
@@ -426,7 +509,7 @@ export function ChatInterface({
                                         {!showDetailsPanel && (
                                             <button
                                                 onClick={() => setShowDetailsPanel(true)}
-                                                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                                                className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200"
                                                 title="Mostrar Detalhes"
                                             >
                                                 <User className="h-4 w-4" /> Detalhes
@@ -438,7 +521,7 @@ export function ChatInterface({
                                 {activeTab === 'finished' && (
                                     <button
                                         onClick={handleReopenChat}
-                                        className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all"
+                                        className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200"
                                     >
                                         <RotateCcw className="h-4 w-4" /> Reabrir
                                     </button>
@@ -449,63 +532,82 @@ export function ChatInterface({
 
                         {/* Messages Area */}
                         <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                            {/* Note: This would typically be populated by fetching real messages. 
-                   For now, we show a placeholder explanation or empty state until connected. */}
-                            {messages.length === 0 ? (
-                                <div className="flex h-full items-center justify-center flex-col text-slate-500 gap-2">
-                                    <MessageSquare className="h-8 w-8 opacity-20" />
-                                    <p>Inicie a conversa ou aguarde mensagens.</p>
+                            {groupedMessages.length === 0 ? (
+                                <div className="flex h-full items-center justify-center flex-col text-muted-foreground gap-3">
+                                    <div className="h-20 w-20 rounded-2xl bg-muted/30 flex items-center justify-center">
+                                        <MessageCircle className="h-10 w-10 opacity-30" />
+                                    </div>
+                                    <p className="text-sm">Inicie a conversa ou aguarde mensagens.</p>
                                 </div>
                             ) : (
-                                messages.map(message => (
-                                    <div key={message.id} className={cn("flex", message.sender_type === 'user' ? "justify-end" : "justify-start")}>
-                                        <div
-                                            className={`
-                                                    p-3 rounded-2xl max-w-[80%] 
-                                                    ${message.sender_type === 'user'
-                                                    ? 'bg-violet-600 text-white rounded-tr-none'
-                                                    : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/10'
-                                                }
-                                                `}
-                                        >
-                                            {message.body && message.media_type !== 'audio' && message.media_type !== 'image' && (
-                                                <p>{message.body}</p>
-                                            )}
-
-                                            {message.media_type === 'audio' && message.media_url && (
-                                                <div className="flex items-center gap-2 min-w-[200px]">
-                                                    <audio controls className="w-full h-8 max-w-[250px]" src={message.media_url}>
-                                                        Your browser does not support the audio element.
-                                                    </audio>
-                                                </div>
-                                            )}
-
-                                            {message.media_type === 'image' && message.media_url && (
-                                                <div className="mt-2 mb-1">
-                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                    <img
-                                                        src={message.media_url}
-                                                        alt="Imagem"
-                                                        className="rounded-lg max-w-[250px] max-h-[300px] object-cover border border-white/10 cursor-pointer hover:opacity-90 transition-opacity"
-                                                        loading="lazy"
-                                                        onClick={() => setClickedImage(message.media_url || '')}
+                                groupedMessages.map((item, index) => {
+                                    if (item.type === 'image-group') {
+                                        // Render grouped images
+                                        return (
+                                            <div 
+                                                key={item.firstMessageId} 
+                                                className={cn("flex animate-fade-in", item.senderType === 'user' ? "justify-end" : "justify-start")}
+                                                style={{ animationDelay: `${index * 20}ms` }}
+                                            >
+                                                <div
+                                                    className={cn(
+                                                        "p-2 rounded-2xl shadow-sm transition-all duration-200",
+                                                        item.senderType === 'user'
+                                                            ? 'bg-primary rounded-tr-md'
+                                                            : 'bg-card rounded-tl-md border border-border/50'
+                                                    )}
+                                                >
+                                                    <MessageImageGroup 
+                                                        images={item.images}
+                                                        onOpenGallery={(idx) => openGallery(item.images, idx)}
+                                                        isFromUser={item.senderType === 'user'}
                                                     />
                                                 </div>
-                                            )}
+                                            </div>
+                                        )
+                                    } else {
+                                        // Render single message (non-image or audio)
+                                        const message = item.message
+                                        return (
+                                            <div 
+                                                key={message.id} 
+                                                className={cn("flex animate-fade-in", message.sender_type === 'user' ? "justify-end" : "justify-start")}
+                                                style={{ animationDelay: `${index * 20}ms` }}
+                                            >
+                                                <div
+                                                    className={cn(
+                                                        "p-4 rounded-2xl max-w-[75%] shadow-sm transition-all duration-200",
+                                                        message.sender_type === 'user'
+                                                            ? 'bg-primary text-primary-foreground rounded-tr-md'
+                                                            : 'bg-card text-foreground rounded-tl-md border border-border/50'
+                                                    )}
+                                                >
+                                                    {message.body && message.media_type !== 'audio' && (
+                                                        <p className="leading-relaxed">{message.body}</p>
+                                                    )}
 
-                                            <div className="flex items-center justify-end gap-1 mt-1"></div>
-                                        </div>
-                                    </div>
-                                ))
+                                                    {message.media_type === 'audio' && message.media_url && (
+                                                        <AudioPlayer 
+                                                            src={message.media_url} 
+                                                            isFromUser={message.sender_type === 'user'} 
+                                                        />
+                                                    )}
+
+                                                    <div className="flex items-center justify-end gap-1 mt-1"></div>
+                                                </div>
+                                            </div>
+                                        )
+                                    }
+                                })
                             )}
                             <div ref={messagesEndRef} />
                         </div>
 
                         {/* Input Area (Only if "Mine") */}
                         {activeTab === 'mine' ? (
-                            <div className="p-4 bg-slate-900/50 border-t border-white/5">
+                            <div className="p-4 bg-card/50 border-t border-border/50">
                                 <form
-                                    className="flex gap-2 items-end"
+                                    className="flex gap-3 items-end"
                                     onSubmit={async (e) => {
                                         e.preventDefault()
                                         if (mediaFiles.length > 0) {
@@ -530,7 +632,7 @@ export function ChatInterface({
                                     <button
                                         type="button"
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="p-3 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors mb-[1px]"
+                                        className="p-3 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all duration-200 mb-[1px]"
                                         title="Anexar Imagem"
                                     >
                                         <Paperclip className="h-5 w-5" />
@@ -541,10 +643,10 @@ export function ChatInterface({
                                         type="button"
                                         onClick={isRecording ? stopRecording : startRecording}
                                         className={cn(
-                                            "p-3 rounded-xl transition-colors mb-[1px]",
+                                            "p-3 rounded-xl transition-all duration-200 mb-[1px]",
                                             isRecording
-                                                ? "bg-red-500/20 text-red-500 animate-pulse"
-                                                : "text-slate-400 hover:text-white hover:bg-white/10"
+                                                ? "bg-destructive/20 text-destructive animate-pulse"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                         )}
                                         title={isRecording ? "Parar gravação" : "Gravar Áudio"}
                                     >
@@ -554,7 +656,7 @@ export function ChatInterface({
                                     {/* INPUT / PREVIEW AREA */}
                                     <div className="flex-1 relative">
                                         {mediaFiles.length > 0 ? (
-                                            <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-xl border border-violet-500/30 overflow-x-auto">
+                                            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border border-primary/30 overflow-x-auto">
                                                 {mediaFiles.map((media, index) => (
                                                     <div key={index} className="relative group min-w-fit">
                                                         {media.type === 'image' ? (
@@ -562,17 +664,17 @@ export function ChatInterface({
                                                             <img
                                                                 src={media.preview}
                                                                 alt={`Preview ${index}`}
-                                                                className="h-12 w-12 object-cover rounded-lg border border-white/10"
+                                                                className="h-12 w-12 object-cover rounded-lg border border-border/50"
                                                             />
                                                         ) : (
-                                                            <div className="flex items-center justify-center h-12 w-12 bg-violet-500/20 rounded-lg border border-violet-500/30">
-                                                                <Mic className="h-5 w-5 text-violet-400" />
+                                                            <div className="flex items-center justify-center h-12 w-12 bg-primary/10 rounded-lg border border-primary/30">
+                                                                <Mic className="h-5 w-5 text-primary" />
                                                             </div>
                                                         )}
                                                         <button
                                                             type="button"
                                                             onClick={() => setMediaFiles(prev => prev.filter((_, i) => i !== index))}
-                                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            className="absolute -top-1.5 -right-1.5 p-1 bg-destructive rounded-full text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                                                         >
                                                             <X className="h-3 w-3" />
                                                         </button>
@@ -581,7 +683,7 @@ export function ChatInterface({
                                                 <button
                                                     type="button"
                                                     onClick={() => setMediaFiles([])}
-                                                    className="sticky right-0 ml-2 p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-red-400"
+                                                    className="sticky right-0 ml-2 p-2 hover:bg-destructive/10 rounded-full text-muted-foreground hover:text-destructive transition-colors"
                                                     title="Limpar tudo"
                                                 >
                                                     <X className="h-5 w-5" />
@@ -593,7 +695,7 @@ export function ChatInterface({
                                                 onChange={e => setInputText(e.target.value)}
                                                 placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
                                                 disabled={isRecording}
-                                                className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:ring-1 focus:ring-violet-500 outline-none"
+                                                className="w-full bg-muted/50 border border-border rounded-xl px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
                                             />
                                         )}
                                     </div>
@@ -603,10 +705,10 @@ export function ChatInterface({
                                         type="submit"
                                         disabled={!inputText.trim() && mediaFiles.length === 0}
                                         className={cn(
-                                            "p-3 rounded-xl transition-colors mb-[1px]",
+                                            "p-3.5 rounded-xl transition-all duration-200 mb-[1px]",
                                             (!inputText.trim() && mediaFiles.length === 0)
-                                                ? "bg-slate-800 text-slate-600 cursor-not-allowed"
-                                                : "bg-violet-600 hover:bg-violet-700 text-white"
+                                                ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20"
                                         )}
                                     >
                                         <Send className="h-5 w-5" />
@@ -614,16 +716,19 @@ export function ChatInterface({
                                 </form>
                             </div>
                         ) : (
-                            <div className="p-4 bg-slate-900/50 border-t border-white/5 text-center text-slate-500 text-sm">
-                                Você precisa assumir este chat para responder.
+                            <div className="p-4 bg-card/50 border-t border-border/50 text-center text-muted-foreground text-sm">
+                                <p className="py-2">Você precisa assumir este chat para responder.</p>
                             </div>
                         )}
 
                     </>
                 ) : (
-                    <div className="flex h-full items-center justify-center flex-col text-slate-600">
-                        <MessageSquare className="h-16 w-16 mb-4 opacity-20" />
-                        <p className="text-lg">Selecione um contato para abrir o chat.</p>
+                    <div className="flex h-full items-center justify-center flex-col text-muted-foreground">
+                        <div className="h-24 w-24 rounded-3xl bg-muted/30 flex items-center justify-center mb-6">
+                            <MessageSquare className="h-12 w-12 opacity-20" />
+                        </div>
+                        <p className="text-lg font-medium">Selecione um contato para abrir o chat.</p>
+                        <p className="text-sm mt-2 opacity-70">Suas conversas aparecerão aqui.</p>
                     </div>
                 )}
             </div>
@@ -655,11 +760,12 @@ export function ChatInterface({
 
             />
 
-            {/* Image Dialog (Lightbox) */}
-            <ImageDialog
-                isOpen={!!clickedImage}
-                imageUrl={clickedImage || ''}
-                onClose={() => setClickedImage(null)}
+            {/* Image Gallery Dialog (Lightbox with slider) */}
+            <ImageGalleryDialog
+                isOpen={showGallery}
+                images={galleryImages}
+                initialIndex={galleryInitialIndex}
+                onClose={() => setShowGallery(false)}
             />
 
         </div>
