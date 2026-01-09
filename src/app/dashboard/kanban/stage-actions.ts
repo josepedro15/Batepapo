@@ -80,6 +80,31 @@ export async function reorderStages(stageIds: string[]) {
 export async function deleteStage(stageId: string) {
     const supabase = await createClient()
 
+    // Get the stage to know its pipeline
+    const { data: stage } = await supabase
+        .from('stages')
+        .select('pipeline_id, position')
+        .eq('id', stageId)
+        .single()
+
+    if (!stage) {
+        throw new Error('Estágio não encontrado')
+    }
+
+    // Check if this is the last stage in the pipeline
+    const { data: allStages, error: countError } = await supabase
+        .from('stages')
+        .select('id')
+        .eq('pipeline_id', stage.pipeline_id)
+
+    if (countError) {
+        throw new Error(`Failed to count stages: ${countError.message}`)
+    }
+
+    if (allStages && allStages.length <= 1) {
+        throw new Error('Não é possível excluir o último estágio do pipeline. É obrigatório ter ao menos um estágio.')
+    }
+
     // Check if stage has deals
     const { data: deals, error: dealsError } = await supabase
         .from('deals')
@@ -94,13 +119,6 @@ export async function deleteStage(stageId: string) {
     if (deals && deals.length > 0) {
         throw new Error('Não é possível excluir um estágio que contém negócios. Mova ou exclua os negócios primeiro.')
     }
-
-    // Get the stage to know its pipeline
-    const { data: stage } = await supabase
-        .from('stages')
-        .select('pipeline_id, position')
-        .eq('id', stageId)
-        .single()
 
     // Delete the stage
     const { error: deleteError } = await supabase

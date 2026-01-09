@@ -33,7 +33,7 @@ const AVAILABLE_COLORS = [
     { value: 'bg-emerald-500', label: 'Esmeralda' },
 ]
 
-function SortableStageItem({ stage, onEdit, onDelete }: { stage: Stage, onEdit: () => void, onDelete: () => void }) {
+function SortableStageItem({ stage, onEdit, onDelete, isLastStage }: { stage: Stage, onEdit: () => void, onDelete: () => void, isLastStage: boolean }) {
     const {
         attributes,
         listeners,
@@ -79,7 +79,14 @@ function SortableStageItem({ stage, onEdit, onDelete }: { stage: Stage, onEdit: 
                 </button>
                 <button
                     onClick={onDelete}
-                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                    disabled={isLastStage}
+                    className={cn(
+                        "p-2 rounded-lg transition-colors",
+                        isLastStage
+                            ? "text-muted-foreground/50 cursor-not-allowed"
+                            : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    )}
+                    title={isLastStage ? "É obrigatório ter ao menos um estágio" : "Excluir estágio"}
                 >
                     <Trash2 className="h-4 w-4" />
                 </button>
@@ -250,6 +257,7 @@ export function ManageStagesDialog({ initialStages, pipelineId }: { initialStage
                                         stage={stage}
                                         onEdit={() => openEditDialog(stage)}
                                         onDelete={() => setDeletingStage(stage)}
+                                        isLastStage={stages.length <= 1}
                                     />
                                 ))}
                             </div>

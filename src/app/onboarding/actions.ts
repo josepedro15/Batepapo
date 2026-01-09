@@ -32,5 +32,32 @@ export async function createOrganization(formData: FormData) {
 
     if (memberError) throw new Error(memberError.message)
 
+    // 4. Create Default Pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
+        .from('pipelines')
+        .insert({
+            organization_id: org.id,
+            name: 'Vendas Padrão'
+        })
+        .select()
+        .single()
+
+    if (pipelineError) throw new Error(pipelineError.message)
+
+    // 5. Create Default Stages
+    const defaultStages = [
+        { pipeline_id: pipeline.id, name: 'Lead', color: 'bg-blue-500', position: 0 },
+        { pipeline_id: pipeline.id, name: 'Contato', color: 'bg-yellow-500', position: 1 },
+        { pipeline_id: pipeline.id, name: 'Qualificação', color: 'bg-purple-500', position: 2 },
+        { pipeline_id: pipeline.id, name: 'Proposta', color: 'bg-green-500', position: 3 },
+        { pipeline_id: pipeline.id, name: 'Fechado', color: 'bg-emerald-500', position: 4 },
+    ]
+
+    const { error: stagesError } = await supabase
+        .from('stages')
+        .insert(defaultStages)
+
+    if (stagesError) throw new Error(stagesError.message)
+
     redirect('/onboarding/plan')
 }
