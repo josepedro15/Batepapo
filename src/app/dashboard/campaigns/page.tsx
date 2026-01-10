@@ -6,7 +6,6 @@ import {
     Send,
     Clock,
     Zap,
-    Shield,
     AlertTriangle,
     Info,
     Calendar,
@@ -235,11 +234,6 @@ export default function CampaignsPage() {
             icon: Clock,
             title: "Envio Gradual",
             description: `Delay de ${delayMin}-${delayMax}s entre mensagens`
-        },
-        {
-            icon: Shield,
-            title: "Anti-Ban",
-            description: "Simula comportamento humano natural"
         },
         {
             icon: Target,
@@ -521,6 +515,39 @@ export default function CampaignsPage() {
                                     </li>
                                 ))}
                             </ul>
+                        </div>
+
+                        {/* Warning Alert - Best Practices */}
+                        <div className="p-5 rounded-2xl bg-gradient-to-br from-warning/10 to-warning/5 border border-warning/20 animate-slide-up" style={{ animationDelay: '225ms' }}>
+                            <div className="flex items-start gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-warning/20 flex items-center justify-center shrink-0">
+                                    <AlertTriangle className="h-5 w-5 text-warning" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-warning mb-2">⚠️ Boas Práticas</h3>
+                                    <p className="text-sm text-warning/90 mb-3">
+                                        Para evitar bloqueio da sua conta no WhatsApp:
+                                    </p>
+                                    <ul className="space-y-2 text-sm text-warning/80">
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-warning">•</span>
+                                            <span>Não faça muitos envios de uma só vez</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-warning">•</span>
+                                            <span>Configure um delay adequado entre mensagens (mínimo 5-10s)</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-warning">•</span>
+                                            <span>Evite enviar várias vezes para o mesmo contato</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-warning">•</span>
+                                            <span>Limite de 100-200 mensagens por dia é recomendado</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Stats Preview */}
