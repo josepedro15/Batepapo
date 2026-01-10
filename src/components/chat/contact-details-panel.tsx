@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle, ListTodo, FileText, Brain, Sparkles, Copy, RefreshCw } from 'lucide-react'
 import { addTag, removeTag, addNote, getNotes, getReminders, createReminder, toggleReminder, getPipelines, updateContactStage, getContactDeal, updateDealValue } from '@/app/dashboard/chat/actions'
-import { generateAIResponse } from '@/app/dashboard/chat/ai-actions'
+import { generateAIResponse, getRemainingAIRequests } from '@/app/dashboard/chat/ai-actions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -30,11 +30,19 @@ export function ContactDetailsPanel({ contact, messages, onClose }: { contact: a
     // AI State
     const [aiSuggestion, setAiSuggestion] = useState('')
     const [aiLoading, setAiLoading] = useState(false)
+    const [aiRemaining, setAiRemaining] = useState<number | null>(null)
 
     // Fetch Initial Data
     useEffect(() => {
         loadData()
     }, [contact.id])
+
+    // Load AI Limit when tab is opened
+    useEffect(() => {
+        if (activeTab === 'ai') {
+            getRemainingAIRequests().then(setAiRemaining)
+        }
+    }, [activeTab])
 
     async function loadData() {
         setLoading(true)
@@ -178,6 +186,8 @@ export function ContactDetailsPanel({ contact, messages, onClose }: { contact: a
             } else if (result.suggestion) {
                 setAiSuggestion(result.suggestion)
                 toast.success('Sugestão gerada!')
+                // Refresh limit
+                getRemainingAIRequests().then(setAiRemaining)
             }
         } catch (error) {
             console.error(error)
@@ -516,7 +526,8 @@ export function ContactDetailsPanel({ contact, messages, onClose }: { contact: a
                                 <AlertCircle className="h-3 w-3" /> Info
                             </h5>
                             <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                • Limite de 40 solicitações por dia.<br />
+                                • <strong>{aiRemaining !== null ? aiRemaining : '--'}</strong> solicitações restantes hoje.<br />
+                                • Limitado a 40/dia.<br />
                                 • A IA analisa apenas texto (imagens são ignoradas).<br />
                                 • Verifique a resposta antes de enviar.
                             </p>

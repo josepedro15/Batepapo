@@ -128,3 +128,25 @@ export async function generateAIResponse(messages: Message[]) {
         return { error: `Erro na API da IA: ${error.message}` }
     }
 }
+
+export async function getRemainingAIRequests() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) return 0 // Fallback
+
+    const { data: member } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
+    if (!member) return 0
+
+    const startOfDay = new Date()
+    startOfDay.setUTCHours(0, 0, 0, 0)
+
+    const { count } = await supabase
+        .from('ai_usage_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', member.organization_id)
+        .gte('created_at', startOfDay.toISOString())
+
+    const usage = count || 0
+    return Math.max(0, 40 - usage)
+}
