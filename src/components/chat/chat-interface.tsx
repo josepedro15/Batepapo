@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact } from '@/app/dashboard/chat/actions'
+import { useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -65,6 +66,10 @@ export function ChatInterface({
     const [showTransferDialog, setShowTransferDialog] = useState(false)
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [showDetailsPanel, setShowDetailsPanel] = useState(true)
+    const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+    const [page, setPage] = useState(0)
+    const [hasMore, setHasMore] = useState(true)
+    const MESSAGES_PER_PAGE = 25
 
     // Contact lists state (for real-time updates)
     const [myChats, setMyChats] = useState<any[]>(initialMyChats || [])
@@ -95,12 +100,118 @@ export function ChatInterface({
     const recorderRef = useRef<MicRecorder | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const tabsRef = useRef<HTMLDivElement>(null)
+    const [canScrollLeft, setCanScrollLeft] = useState(false)
+    const [canScrollRight, setCanScrollRight] = useState(false)
+
+    const checkScroll = useCallback(() => {
+        if (tabsRef.current) {
+            const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current
+            setCanScrollLeft(scrollLeft > 0)
+            setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5) // buffer of 5px
+        }
+    }, [])
+
+    useEffect(() => {
+        checkScroll()
+        window.addEventListener('resize', checkScroll)
+        return () => window.removeEventListener('resize', checkScroll)
+    }, [checkScroll, myChats, awaitingChats, allChats, finishedChats]) // checking when data changes too
+
+    // Handle Deep Linking to Chat
+    const searchParams = useSearchParams()
+    const chatId = searchParams.get('chatId')
+
+    useEffect(() => {
+        if (!chatId) return
+
+        const loadDeepLinkChat = async () => {
+             // 1. Try to find in existing lists
+            const allLists = [
+                ...(myChats || []), 
+                ...(awaitingChats || []), 
+                ...(allChats || []), 
+                ...(finishedChats || [])
+            ]
+            
+            const existing = allLists.find(c => c.id === chatId)
+            
+            if (existing) {
+                setSelectedContact(existing)
+                // Switch to correct tab
+                if (myChats?.find(c => c.id === chatId)) setActiveTab('mine')
+                else if (awaitingChats?.find(c => c.id === chatId)) setActiveTab('awaiting')
+                else if (finishedChats?.find(c => c.id === chatId)) setActiveTab('finished')
+                else setActiveTab('all')
+            } else {
+                // 2. Not in lists, fetch from DB
+                try {
+                    const fetchedContact = await getContact(chatId)
+                    if (fetchedContact) {
+                        setSelectedContact(fetchedContact)
+                        // Guess tab
+                        if (fetchedContact.status === 'closed') setActiveTab('finished')
+                        else if (!fetchedContact.owner_id) setActiveTab('awaiting')
+                        else setActiveTab('mine') // or 'all' if owner is different, but 'mine' is safe default
+                    }
+                } catch (error) {
+                    console.error('Error fetching chat from URL', error)
+                }
+            }
+        }
+
+        loadDeepLinkChat()
+    }, [chatId, myChats, awaitingChats, allChats, finishedChats])
+
+    const scrollTabs = (direction: 'left' | 'right') => {
+        if (tabsRef.current) {
+            const container = tabsRef.current
+            const scrollAmount = 200
+            const newScrollLeft = direction === 'left' 
+                ? container.scrollLeft - scrollAmount 
+                : container.scrollLeft + scrollAmount
+            
+            container.scrollTo({
+                left: newScrollLeft,
+                behavior: 'smooth'
+            })
+            // Update buttons state after animation (approx)
+            setTimeout(checkScroll, 300)
+        }
+    }
 
     // Notification context
     const { markAsRead, playNotificationSound } = useNotification()
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight } = e.currentTarget
+        if (scrollTop < 80 && hasMore && !isLoadingMessages) {
+            setIsLoadingMessages(true)
+            const currentScrollHeight = scrollHeight
+            
+            const nextPage = page + 1
+            const olderMessages = await getMessages(selectedContact!.id, nextPage, MESSAGES_PER_PAGE)
+            
+            if (olderMessages && olderMessages.length > 0) {
+                setMessages(prev => [...olderMessages, ...prev])
+                setPage(nextPage)
+                setHasMore(olderMessages.length === MESSAGES_PER_PAGE)
+                
+                // Restore scroll position
+                requestAnimationFrame(() => {
+                    if (e.currentTarget) {
+                        e.currentTarget.scrollTop = e.currentTarget.scrollHeight - currentScrollHeight
+                    }
+                })
+            } else {
+                setHasMore(false)
+            }
+            setIsLoadingMessages(false)
+        }
     }
 
     // Media Handlers
@@ -198,8 +309,11 @@ export function ChatInterface({
 
     // Scroll of new messages
     useEffect(() => {
-        scrollToBottom()
-    }, [messages])
+        // Only scroll to bottom if loading the first page or receiving new message at the bottom
+        if (page === 0) {
+            scrollToBottom()
+        }
+    }, [messages, page])
 
     // Mark as read on mount (user is viewing chat page)
     useEffect(() => {
@@ -233,43 +347,93 @@ export function ChatInterface({
     const supabase = createClient()
 
     useEffect(() => {
-        if (!selectedContact) return
+        if (!selectedContact?.id) return
+
+        const contactId = selectedContact.id
 
         // Mark as read when selecting a contact
         markAsRead()
         // Clear messages immediately to avoid showing previous chat
         setMessages([])
+        // Reset pagination
+        setPage(0)
+        setHasMore(true)
+
+        // Start loading state
+        setIsLoadingMessages(true)
 
         // 1. Load initial history
-        getMessages(selectedContact.id).then(msgs => {
+        getMessages(contactId, 0, MESSAGES_PER_PAGE).then(msgs => {
             setMessages(msgs || [])
+            setHasMore((msgs?.length || 0) === MESSAGES_PER_PAGE)
+            setIsLoadingMessages(false)
+        }).catch(() => {
+            setIsLoadingMessages(false)
         })
 
         // 2. Polling fallback (since Realtime has connection issues)
         // Refresh messages every 1 second
         const pollInterval = setInterval(() => {
-            getMessages(selectedContact.id).then(newMsgs => {
-                if (newMsgs && newMsgs.length > 0) {
+            // Check for new messages only (simplistic approach: fetch last page again and check end)
+            // But with pagination this is tricky. We'll simplify: just check the last messages.
+            // Actually, we need to poll the LATEST message to see if we should append.
+            
+            // NOTE: For now, keeping original polling logic but fetching page 0 might check new messages if sorted desc?
+            // Original logic fetched ALL. Now we fetch page 0 (latest 25).
+            // If new message comes, it will be in page 0.
+            
+            getMessages(contactId, 0, MESSAGES_PER_PAGE).then(latestMsgs => {
+                if (latestMsgs && latestMsgs.length > 0) {
                     setMessages(prev => {
-                        // Only update if there are new messages
-                        if (newMsgs.length !== prev.length) {
-                            // Check if the newest message is from a contact
-                            const lastNewMsg = newMsgs[newMsgs.length - 1]
-                            if (lastNewMsg.sender_type === 'contact' && prev.length > 0) {
+                        // Compare the last message in current state with last in fetched
+                        // This is tricky because `prev` might have 100 messages (loaded 4 pages)
+                        // and `latestMsgs` has only 25.
+                        
+                        // We only want to append NEW messages at the end.
+                        const lastCurrent = prev[prev.length - 1]
+                        const lastFetched = latestMsgs[latestMsgs.length - 1]
+
+                        if (!lastCurrent || !lastFetched) return prev
+
+                        if (lastFetched.id !== lastCurrent.id) {
+                            // There are new messages!
+                            // Find which ones are new.
+                            // Simple way: Find lastCurrent in latestMsgs
+                            const index = latestMsgs.findIndex(m => m.id === lastCurrent.id)
+                            if (index !== -1 && index < latestMsgs.length - 1) {
+                                const newOnes = latestMsgs.slice(index + 1)
                                 playNotificationSound()
+                                return [...prev, ...newOnes]
+                            } else if (index === -1) {
+                                // Maybe many new messages, just replace/refetch or append all?
+                                // If gap, might be issue. For now let's assume valid flow.
+                                // Or maybe the current list is empty?
+                                // If index -1, it means the lastCurrent is OLDER than the oldest in latest-25 page?
+                                // No, latestMsgs are the NEWEST 25.
+                                // If lastCurrent is NOT in latestMsgs, it might be that latestMsgs are ALL newer?
+                                // This polling logic needs to be robust. 
+                                
+                                // Alternative: Check if lastFetched is newer than lastCurrent.
+                                // If so, we can just append it?
+                                // Let's just append the very last one if it's different ID, ensuring no dupe?
+                                // Safer: Filter latestMsgs for ones with created_at > lastCurrent.created_at
+                                const newOnes = latestMsgs.filter(m => new Date(m.created_at) > new Date(lastCurrent.created_at))
+                                if (newOnes.length > 0) {
+                                    playNotificationSound()
+                                    return [...prev, ...newOnes]
+                                }
                             }
-                            return newMsgs
                         }
                         return prev
                     })
                 }
             })
-        }, 1000)
+        }, 3000) // Increased poll to 3s to reduce load further
 
         return () => {
             clearInterval(pollInterval)
         }
-    }, [selectedContact, markAsRead, playNotificationSound])
+    }, [selectedContact?.id, markAsRead, playNotificationSound]) // Only re-run if ID changes
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
@@ -452,19 +616,53 @@ export function ChatInterface({
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-border/50 overflow-x-auto scrollbar-hide">
-                    {tabs.map(tab => (
+                {/* Tabs Wrapper with Slider Controls */}
+                <div className="relative group border-b border-border/50">
+                    {/* Left Button */}
+                    <div className={cn(
+                        "absolute left-0 top-0 bottom-0 z-10 flex items-center bg-gradient-to-r from-card to-transparent pr-4 pl-1 transition-opacity duration-200",
+                        canScrollLeft ? "opacity-100" : "opacity-0 pointer-events-none"
+                    )}>
                         <button
-                            key={tab.id}
-                            onClick={() => { setActiveTab(tab.id); setSelectedContact(null) }}
-                            className={cn(
-                                "px-4 py-3.5 text-sm font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 border-b-2 border-transparent",
-                                getTabColorClasses(tab.id, activeTab === tab.id)
-                            )}
+                            onClick={() => scrollTabs('left')}
+                            className="h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-colors"
                         >
-                            {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
+                            <ChevronLeft className="h-4 w-4" />
                         </button>
-                    ))}
+                    </div>
+
+                    {/* Scroll Container */}
+                    <div 
+                        ref={tabsRef}
+                        onScroll={checkScroll}
+                        className="flex overflow-x-auto scrollbar-hide scroll-smooth relative"
+                    >
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => { setActiveTab(tab.id); setSelectedContact(null) }}
+                                className={cn(
+                                    "px-4 py-3.5 text-sm font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 border-b-2 border-transparent",
+                                    getTabColorClasses(tab.id, activeTab === tab.id)
+                                )}
+                            >
+                                {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Right Button */}
+                    <div className={cn(
+                        "absolute right-0 top-0 bottom-0 z-10 flex items-center justify-end bg-gradient-to-l from-card to-transparent pl-4 pr-1 transition-opacity duration-200",
+                        canScrollRight ? "opacity-100" : "opacity-0 pointer-events-none"
+                    )}>
+                        <button
+                            onClick={() => scrollTabs('right')}
+                            className="h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-colors"
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* List */}
@@ -636,8 +834,21 @@ export function ChatInterface({
                         </div>
 
                         {/* Messages Area */}
-                        <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                            {groupedMessages.length === 0 ? (
+                        <div 
+                            className="flex-1 p-6 overflow-y-auto space-y-4"
+                            onScroll={handleScroll}
+                        >
+                            {isLoadingMessages ? (
+                                <div className="flex h-full items-center justify-center flex-col text-muted-foreground gap-4 animate-fade-in">
+                                    <div className="h-20 w-20 rounded-2xl bg-primary/10 flex items-center justify-center relative">
+                                        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm font-medium text-foreground">Carregando mensagens...</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Aguarde um momento</p>
+                                    </div>
+                                </div>
+                            ) : groupedMessages.length === 0 ? (
                                 <div className="flex h-full items-center justify-center flex-col text-muted-foreground gap-3">
                                     <div className="h-20 w-20 rounded-2xl bg-muted/30 flex items-center justify-center">
                                         <MessageCircle className="h-10 w-10 opacity-30" />

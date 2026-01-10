@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+    BarChart3,
     LayoutDashboard,
     MessageSquare,
     Megaphone,
@@ -18,6 +19,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useNotification } from "@/components/providers/notification-provider"
 
 const navigation = [
+    { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
     { name: "Kanban", href: "/dashboard/kanban", icon: LayoutDashboard },
     { name: "Chat", href: "/dashboard/chat", icon: MessageSquare },
     { name: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
@@ -52,8 +54,11 @@ export function SidebarClient({
 
             {/* Navigation */}
             <nav className="flex-1 w-full px-2 space-y-2">
-                {navigation.map((item) => {
-                    const isActive = pathname?.startsWith(item.href)
+            {navigation.map((item) => {
+                    // Dashboard should only be active on exact /dashboard path
+                    const isActive = item.href === '/dashboard' 
+                        ? pathname === '/dashboard'
+                        : pathname?.startsWith(item.href)
                     const isChat = item.name === 'Chat'
                     return (
                         <Link

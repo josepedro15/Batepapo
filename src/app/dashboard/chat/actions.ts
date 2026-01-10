@@ -169,15 +169,22 @@ export async function getChatData() {
     }
 }
 
-export async function getMessages(contactId: string) {
+export async function getMessages(contactId: string, page: number = 0, limit: number = 25) {
     const supabase = await createClient()
+
+    // Calculate range
+    const from = page * limit
+    const to = from + limit - 1
+
     const { data } = await supabase
         .from('messages')
         .select('*')
         .eq('contact_id', contactId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) // Get newest first
+        .range(from, to)
 
-    return data
+    // Return in chronological order (oldest first)
+    return data?.reverse() || []
 }
 
 import * as uazapi from '@/lib/uazapi'
@@ -788,4 +795,48 @@ export async function refreshContactAvatar(contactId: string) {
     }
 
     return { success: false, message: 'No avatar found' }
+}
+
+export async function getContact(contactId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+
+    // Get basic contact info
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single()
+
+    if (!contact) return null
+
+    // Get last message and unread count
+    const { data: messages } = await supabase
+        .from('messages')
+        .select('body, sender_type, media_type, created_at')
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false })
+
+    const lastMsg = messages?.[0]
+
+    // Calculate unread count (simple version: count contact messages since last user message)
+    let unreadCount = 0
+    if (messages) {
+        for (const msg of messages) {
+            if (msg.sender_type === 'user') break
+            if (msg.sender_type === 'contact') unreadCount++
+        }
+    }
+
+    return {
+        ...contact,
+        last_message: lastMsg ? {
+            body: lastMsg.body,
+            sender_type: lastMsg.sender_type,
+            media_type: lastMsg.media_type
+        } : null,
+        last_message_at: lastMsg?.created_at || contact.created_at,
+        unread_count: unreadCount
+    }
 }

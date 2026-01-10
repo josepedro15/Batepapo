@@ -1,31 +1,43 @@
 -- =============================================
--- SEED DEFAULT PLANS (Starter & Pro)
--- Executar este script para corrigir "Price ID not found"
+-- SEED DEFAULT PLAN (Plano Único)
+-- Executar este script para configurar o plano
 -- =============================================
 
--- 1. Inserir Produtos (se não existirem)
+-- 1. Remover planos antigos (se existirem)
+DELETE FROM plan_limits WHERE price_id IN ('price_starter_monthly', 'price_pro_monthly');
+DELETE FROM prices WHERE id IN ('price_starter_monthly', 'price_pro_monthly');
+DELETE FROM products WHERE id IN ('prod_starter', 'prod_pro');
+
+-- 2. Inserir Produto único
 INSERT INTO products (id, name, active, description)
 VALUES 
-    ('prod_starter', 'Starter', true, 'Plano ideal para pequenas equipes'),
-    ('prod_pro', 'Pro', true, 'Para equipes em crescimento')
-ON CONFLICT (id) DO NOTHING;
+    ('prod_batepapo', 'BatePapo Pro', true, 'Plano completo com todos os recursos')
+ON CONFLICT (id) DO UPDATE 
+SET name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    active = EXCLUDED.active;
 
--- 2. Inserir Preços (se não existirem)
+-- 3. Inserir Preço (R$ 150,00/mês = 15000 centavos)
 INSERT INTO prices (id, product_id, active, currency, unit_amount, type, interval)
 VALUES 
-    ('price_starter_monthly', 'prod_starter', true, 'brl', 9700, 'recurring', 'month'),
-    ('price_pro_monthly', 'prod_pro', true, 'brl', 19700, 'recurring', 'month')
-ON CONFLICT (id) DO NOTHING;
+    ('price_batepapo_monthly', 'prod_batepapo', true, 'brl', 15000, 'recurring', 'month')
+ON CONFLICT (id) DO UPDATE 
+SET unit_amount = EXCLUDED.unit_amount,
+    active = EXCLUDED.active;
 
--- 3. Definir Limites do Plano (Plan Limits)
+-- 4. Definir Limites do Plano (usando limites Pro)
 INSERT INTO plan_limits (price_id, max_users, max_contacts, max_pipelines, features)
 VALUES 
-    ('price_starter_monthly', 3, 1000, 2, '["3 atendentes", "1.000 contatos", "2 pipelines", "Chat WhatsApp"]'::jsonb),
-    ('price_pro_monthly', 10, 10000, 5, '["10 atendentes", "10.000 contatos", "5 pipelines", "Campanhas WhatsApp", "Analytics avançado"]'::jsonb)
+    ('price_batepapo_monthly', 10, 10000, 5, '["10 atendentes", "10.000 contatos", "5 pipelines", "Chat WhatsApp", "Campanhas WhatsApp", "Analytics avançado"]'::jsonb)
 ON CONFLICT (price_id) DO UPDATE 
 SET max_users = EXCLUDED.max_users,
     max_contacts = EXCLUDED.max_contacts,
+    max_pipelines = EXCLUDED.max_pipelines,
     features = EXCLUDED.features;
 
--- 4. Verificação Final (Deve retornar 2 linhas)
-SELECT * FROM prices WHERE id IN ('price_starter_monthly', 'price_pro_monthly');
+-- 5. Verificação Final (Deve retornar 1 linha)
+SELECT p.name, pr.unit_amount/100 as price_reais, pl.max_users, pl.max_contacts, pl.features
+FROM products p
+JOIN prices pr ON pr.product_id = p.id
+JOIN plan_limits pl ON pl.price_id = pr.id
+WHERE p.id = 'prod_batepapo';

@@ -101,33 +101,25 @@ export async function PATCH(request: NextRequest) {
                 .update({ is_super_admin: !profile?.is_super_admin })
                 .eq('id', userId)
         } else if (action === 'update_plan') {
-            // Manual Plan Override
-            const { planId } = body // 'starter' or 'pro'
+            // Dynamic Plan Assignment - priceId comes directly from request
+            const { priceId } = body
 
-            // Get Price ID from Env or DB
-            // We need to look up a valid price_id from the prices table to satisfy FK
-            // Assuming we want the monthly price for simplicity
-
-            let targetPriceId = process.env.STRIPE_PRICE_STARTER
-            if (planId === 'pro') targetPriceId = process.env.STRIPE_PRICE_PRO
-
-            if (!targetPriceId) {
-                // Fallback: try to find ANY price for the product name
-                // This is a bit loose but helps if envs are missing
-                const productName = planId === 'pro' ? 'Pro' : 'Starter'
-                const { data: price } = await adminClient
-                    .from('prices')
-                    .select('id, products!inner(name)')
-                    .eq('products.name', productName)
-                    .limit(1)
-                    .single()
-
-                if (price) targetPriceId = price.id
+            if (!priceId) {
+                return NextResponse.json({ error: 'Price ID is required' }, { status: 400 })
             }
 
-            if (!targetPriceId) {
-                return NextResponse.json({ error: 'Price ID not found for plan ' + planId }, { status: 400 })
+            // Verify price exists
+            const { data: priceCheck } = await adminClient
+                .from('prices')
+                .select('id')
+                .eq('id', priceId)
+                .single()
+
+            if (!priceCheck) {
+                return NextResponse.json({ error: 'Price ID not found: ' + priceId }, { status: 400 })
             }
+
+            const targetPriceId = priceId
 
             // Check for existing sub
             const { data: existingSub } = await adminClient

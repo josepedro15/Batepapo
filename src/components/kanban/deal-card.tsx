@@ -2,8 +2,9 @@
 
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, MessageCircle } from 'lucide-react'
 import { useState } from 'react'
+import Link from 'next/link'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { EditDealDialog } from '@/components/dialogs/edit-deal-dialog'
 import { deleteDeal } from '@/app/dashboard/kanban/actions'
@@ -57,7 +58,15 @@ export function DealCard({ deal, isOverlay }: { deal: any, isOverlay?: boolean }
 
                     {/* More Options Dropdown */}
                     {!isOverlay && (
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200" onPointerDown={e => e.stopPropagation()}>
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-1" onPointerDown={e => e.stopPropagation()}>
+                             <Link 
+                                href={`/dashboard/chat?chatId=${deal.contact_id || deal.contacts?.id}`}
+                                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary outline-none transition-colors"
+                                title="Ir para conversa"
+                            >
+                                <MessageCircle className="h-4 w-4" />
+                            </Link>
+
                             <DropdownMenu.Root>
                                 <DropdownMenu.Trigger asChild>
                                     <button className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground outline-none transition-colors">
