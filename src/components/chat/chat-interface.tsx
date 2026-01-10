@@ -17,12 +17,12 @@ import { AudioPlayer } from '@/components/chat/audio-player'
 import MicRecorder from 'mic-recorder-to-mp3'
 
 // Types (simplified for this file)
-type Contact = { 
-    id: string; 
-    name: string; 
-    phone: string; 
-    tags: string[] | null; 
-    last_message_at?: string; 
+type Contact = {
+    id: string;
+    name: string;
+    phone: string;
+    tags: string[] | null;
+    last_message_at?: string;
     avatar_url?: string;
     unread_count?: number;
     last_message?: {
@@ -346,6 +346,8 @@ export function ChatInterface({
     // Realtime Setup
     const supabase = createClient()
 
+    const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+
     useEffect(() => {
         if (!selectedContact?.id) return
 
@@ -431,7 +433,7 @@ export function ChatInterface({
         }, 3000) // Increased poll to 3s to reduce load further
 
         return () => {
-            clearInterval(pollInterval)
+            supabase.removeChannel(channel)
         }
     }, [selectedContact?.id, markAsRead, playNotificationSound]) // Only re-run if ID changes
 
@@ -912,8 +914,8 @@ export function ChatInterface({
                                                     <div className="flex items-center justify-end gap-1 mt-1">
                                                         <span className={cn(
                                                             "text-[10px]",
-                                                            message.sender_type === 'user' 
-                                                                ? "text-primary-foreground/70" 
+                                                            message.sender_type === 'user'
+                                                                ? "text-primary-foreground/70"
                                                                 : "text-muted-foreground"
                                                         )}>
                                                             {formatTime(message.created_at)}
