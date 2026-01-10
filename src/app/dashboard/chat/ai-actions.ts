@@ -55,8 +55,8 @@ export async function generateAIResponse(messages: Message[]) {
         .eq('organization_id', orgId)
         .single()
 
-    const model = settings?.model || 'gpt-4o'
-    const temperature = settings?.temperature ?? 0.7
+    const model = 'gpt-4o-mini'
+    const temperature = 0.7
     const customPrompt = settings?.system_prompt
 
     // 4. Prepare Messages for OpenAI

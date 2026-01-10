@@ -11,8 +11,6 @@ export function AISettingsCard() {
     const [saving, setSaving] = useState(false)
 
     // Form State
-    const [model, setModel] = useState('gpt-4o')
-    const [temperature, setTemperature] = useState(0.7)
     const [prompt, setPrompt] = useState('')
 
     useEffect(() => {
@@ -23,8 +21,6 @@ export function AISettingsCard() {
         try {
             const data = await getAISettings()
             if (data) {
-                if (data.model) setModel(data.model)
-                if (data.temperature !== null) setTemperature(data.temperature)
                 if (data.system_prompt) setPrompt(data.system_prompt)
             }
         } catch (error) {
@@ -40,8 +36,8 @@ export function AISettingsCard() {
         try {
             const result = await updateAISettings({
                 prompt,
-                model,
-                temperature
+                model: 'gpt-4o-mini', // Hardcoded default
+                temperature: 0.7 // Default
             })
 
             if (result.error) {
@@ -84,7 +80,7 @@ export function AISettingsCard() {
                             Configuração do Agente
                             {/* <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border border-primary/20">Beta</span> */}
                         </h3>
-                        <p className="text-sm text-muted-foreground">Personalize o comportamento da Inteligência Artificial</p>
+                        <p className="text-sm text-muted-foreground">Personalize as instruções e comportamento (Modelo: GPT-4o Mini)</p>
                     </div>
                 </div>
             </div>
@@ -107,50 +103,6 @@ export function AISettingsCard() {
                     />
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
-                    {/* Model Selector */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-medium text-foreground">Modelo</label>
-                        <div className="relative">
-                            <select
-                                value={model}
-                                onChange={(e) => setModel(e.target.value)}
-                                className="w-full p-3 rounded-xl bg-background/50 border border-border focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all text-sm appearance-none cursor-pointer"
-                            >
-                                <option value="gpt-4o">GPT-4o (Recomendado)</option>
-                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Mais rápido/barato)</option>
-                            </select>
-                            {/* Chevron */}
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Temperature Slider */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-foreground">Criatividade (Temperatura)</label>
-                            <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">{temperature}</span>
-                        </div>
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={temperature}
-                            onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                            className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary hover:accent-primary/80 transition-all"
-                        />
-                        <div className="flex justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                            <span>Preciso</span>
-                            <span>Criativo</span>
-                        </div>
-                    </div>
-                </div>
 
                 {/* Footer / Save Button */}
                 <div className="pt-4 flex justify-end">
