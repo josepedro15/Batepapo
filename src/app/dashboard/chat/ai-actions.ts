@@ -4,9 +4,7 @@ import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 import { Message } from '@/types/database'
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+// const openai = new OpenAI(...) // Removed from top-level
 
 export async function generateAIResponse(messages: Message[]) {
     const supabase = await createClient()
@@ -81,6 +79,11 @@ export async function generateAIResponse(messages: Message[]) {
     Mantenha um tom profissional, porém amigável.
     Responda em português do Brasil.`
     }
+
+    // Lazy init OpenAI to prevent top-level crashes if env is missing
+    const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    })
 
     try {
         const response = await openai.chat.completions.create({
