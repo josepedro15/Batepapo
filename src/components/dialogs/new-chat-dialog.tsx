@@ -60,8 +60,16 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                 })
                 setHasMore(data.contacts.length === 20) // Assuming pageSize is 20
             } else {
+                const errorData = await response.json().catch(() => ({}))
+                console.error('Contact fetch error:', errorData)
+
                 // If instance not connected/found, just stop trying to load
-                if (pageNum === 1) setContacts([])
+                if (pageNum === 1) {
+                    setContacts([])
+                    if (errorData.error) {
+                        toast.error(`Erro ao carregar contatos: ${errorData.error}`)
+                    }
+                }
                 setHasMore(false)
             }
         } catch (error) {
