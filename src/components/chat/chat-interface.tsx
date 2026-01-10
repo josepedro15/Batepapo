@@ -3,7 +3,17 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
+<<<<<<< HEAD
 import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar } from '@/app/dashboard/chat/actions'
+=======
+import { assignChat, sendMessage, finishChat, reopenChat, syncProfilePictures, sendMedia, refreshContactAvatar } from '@/app/dashboard/chat/actions'
+
+// ... existing code ...
+
+
+
+// Automatic Sync on Mount (once)
+>>>>>>> 4ea3786 (perf: otimiza busca de mensagens para cliente (supabase direto))
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -16,12 +26,12 @@ import { AudioPlayer } from '@/components/chat/audio-player'
 import MicRecorder from 'mic-recorder-to-mp3'
 
 // Types (simplified for this file)
-type Contact = { 
-    id: string; 
-    name: string; 
-    phone: string; 
-    tags: string[] | null; 
-    last_message_at?: string; 
+type Contact = {
+    id: string;
+    name: string;
+    phone: string;
+    tags: string[] | null;
+    last_message_at?: string;
     avatar_url?: string;
     unread_count?: number;
     last_message?: {
@@ -240,30 +250,39 @@ export function ChatInterface({
         // Clear messages immediately to avoid showing previous chat
         setMessages([])
 
-        // 1. Load initial history
-        getMessages(selectedContact.id).then(msgs => {
-            setMessages(msgs || [])
-        })
+        const fetchMessages = async () => {
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('contact_id', selectedContact.id)
+                .order('created_at', { ascending: true })
+
+            if (!error && data) {
+                setMessages(data)
+            }
+        }
+
+        // 1. Initial Load
+        fetchMessages()
 
         // 2. Polling fallback (since Realtime has connection issues)
         // Refresh messages every 1 second
-        const pollInterval = setInterval(() => {
-            getMessages(selectedContact.id).then(newMsgs => {
-                if (newMsgs && newMsgs.length > 0) {
-                    setMessages(prev => {
-                        // Only update if there are new messages
-                        if (newMsgs.length !== prev.length) {
-                            // Check if the newest message is from a contact
-                            const lastNewMsg = newMsgs[newMsgs.length - 1]
-                            if (lastNewMsg.sender_type === 'contact' && prev.length > 0) {
-                                playNotificationSound()
-                            }
-                            return newMsgs
-                        }
-                        return prev
-                    })
-                }
-            })
+        const pollInterval = setInterval(async () => {
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('contact_id', selectedContact.id)
+                .order('created_at', { ascending: true })
+
+            if (!error && data && data.length > 0) {
+                setMessages(prev => {
+                    // Only update if there are new messages
+                    if (data.length !== prev.length) {
+                        return data
+                    }
+                    return prev
+                })
+            }
         }, 1000)
 
         return () => {
@@ -701,8 +720,8 @@ export function ChatInterface({
                                                     <div className="flex items-center justify-end gap-1 mt-1">
                                                         <span className={cn(
                                                             "text-[10px]",
-                                                            message.sender_type === 'user' 
-                                                                ? "text-primary-foreground/70" 
+                                                            message.sender_type === 'user'
+                                                                ? "text-primary-foreground/70"
                                                                 : "text-muted-foreground"
                                                         )}>
                                                             {formatTime(message.created_at)}
