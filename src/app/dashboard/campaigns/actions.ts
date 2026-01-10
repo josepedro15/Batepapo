@@ -57,18 +57,17 @@ async function getOrgAndInstance() {
 
     if (!member?.organization_id) throw new Error('Organization not found')
 
-    // Get WhatsApp instance for this org
+    // Get WhatsApp instance for this org (don't filter by status in query)
     const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('id, token, status')
+        .select('id, instance_token, status')
         .eq('organization_id', member.organization_id)
-        .eq('status', 'connected')
         .single()
 
     return {
         userId: user.id,
         organizationId: member.organization_id,
-        instanceToken: instance?.token || null,
+        instanceToken: instance?.instance_token || null,
         instanceConnected: instance?.status === 'connected'
     }
 }
