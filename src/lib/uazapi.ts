@@ -349,6 +349,85 @@ export async function getContacts(instanceToken: string): Promise<WhatsAppContac
 }
 
 /**
+ * List contacts with pagination
+ * POST /contacts/list
+ */
+export interface ContactListParams {
+    page?: number
+    pageSize?: number // max 1000
+    limit?: number // alias for pageSize
+    offset?: number
+    search?: string // Optional search term
+}
+
+export interface ContactListResponse {
+    contacts: WhatsAppContact[]
+    total?: number
+    page?: number
+    pageSize?: number
+}
+
+export async function listContacts(
+    instanceToken: string,
+    params: ContactListParams = {}
+): Promise<ContactListResponse> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/contacts/list`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            page: params.page || 1,
+            pageSize: params.pageSize || 20,
+            search: params.search // Assuming the API supports search in body
+        })
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to list contacts')
+    }
+
+    const data = await response.json()
+
+    // Handle different response structures gracefully
+    const rawContacts = Array.isArray(data) ? data : (data.contacts || data.items || [])
+
+    // DEBUG: Log first contact structure to help debug "Unknown" issue
+    if (rawContacts.length > 0) {
+        // console.log('[UAZAPI DEBUG] First contact keys:', Object.keys(rawContacts[0]))
+    }
+
+    const formattedContacts = rawContacts
+        .filter((c: any) => {
+            const id = c.jid || c.id || c.chatId
+            return id && !id.includes('@g.us')
+        })
+        .map((c: any) => {
+            const id = c.jid || c.id || c.chatId
+            const phone = id ? id.split('@')[0] : (c.number || c.phone || '')
+
+            // Map fields based on verified response: {"contact_name": "...", "jid": "..."}
+            const name = c.contact_name || c.contact_FirstName || c.name || c.pushName || c.notify || c.verifiedName || phone || 'Unknown'
+
+            return {
+                id: id,
+                name: name,
+                phone: phone,
+                // API response doesn't include profile pic in list
+                profilePicUrl: c.profilePicUrl || c.image || c.picture || null
+            }
+        })
+
+    return {
+        contacts: formattedContacts,
+        total: data.total || formattedContacts.length,
+        page: params.page || 1,
+        pageSize: params.pageSize || 20
+    }
+}
+
+/**
  * Fetch profile picture for a specific phone number
  * POST /misc/downProfile
  */
@@ -375,11 +454,24 @@ export async function fetchProfilePicture(
             })
         })
 
+        if (!response.ok) {
+            console.error('UAZAPI fetchProfilePicture error:', await response.text())
+            // return null
+        }
+
+        const data = await response.json()
+        // API usually returns { link: "url", ... } or just the url string in some versions
+        // Based on similar APIs, it might be data.link, data.url, or data.picture
+
+        // Debug
+        // console.log('Profile Pic Response:', data)
+
+        return data.link || data.url || data.picture || data.profilePic || null
+
     } catch (error) {
         console.error('Error fetching profile picture:', error)
         return null
     }
-    return null
 }
 
 /**

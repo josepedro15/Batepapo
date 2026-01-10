@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -86,7 +86,7 @@ export function ChatInterface({
     // Media State
     const [isRecording, setIsRecording] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
-    
+
     // Gallery State
     const [galleryImages, setGalleryImages] = useState<string[]>([])
     const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
@@ -237,6 +237,8 @@ export function ChatInterface({
 
         // Mark as read when selecting a contact
         markAsRead()
+        // Clear messages immediately to avoid showing previous chat
+        setMessages([])
 
         // 1. Load initial history
         getMessages(selectedContact.id).then(msgs => {
@@ -244,7 +246,7 @@ export function ChatInterface({
         })
 
         // 2. Polling fallback (since Realtime has connection issues)
-        // Refresh messages every 3 seconds
+        // Refresh messages every 1 second
         const pollInterval = setInterval(() => {
             getMessages(selectedContact.id).then(newMsgs => {
                 if (newMsgs && newMsgs.length > 0) {
@@ -262,7 +264,7 @@ export function ChatInterface({
                     })
                 }
             })
-        }, 3000)
+        }, 1000)
 
         return () => {
             clearInterval(pollInterval)
@@ -279,6 +281,17 @@ export function ChatInterface({
             }
         }
     }, [myChats, awaitingChats, allChats, finishedChats])
+
+    // Refresh Avatar on selection if missing
+    useEffect(() => {
+        if (selectedContact && !selectedContact.avatar_url) {
+            refreshContactAvatar(selectedContact.id).then(res => {
+                if (res.success && res.avatarUrl) {
+                    setSelectedContact(prev => prev ? { ...prev, avatar_url: res.avatarUrl } : null)
+                }
+            })
+        }
+    }, [selectedContact])
 
     const handleFinishChat = async () => {
         if (!selectedContact) return
@@ -636,8 +649,8 @@ export function ChatInterface({
                                     if (item.type === 'image-group') {
                                         // Render grouped images
                                         return (
-                                            <div 
-                                                key={item.firstMessageId} 
+                                            <div
+                                                key={item.firstMessageId}
                                                 className={cn("flex animate-fade-in", item.senderType === 'user' ? "justify-end" : "justify-start")}
                                                 style={{ animationDelay: `${index * 20}ms` }}
                                             >
@@ -649,7 +662,7 @@ export function ChatInterface({
                                                             : 'bg-card rounded-tl-md border border-border/50'
                                                     )}
                                                 >
-                                                    <MessageImageGroup 
+                                                    <MessageImageGroup
                                                         images={item.images}
                                                         onOpenGallery={(idx) => openGallery(item.images, idx)}
                                                         isFromUser={item.senderType === 'user'}
@@ -661,8 +674,8 @@ export function ChatInterface({
                                         // Render single message (non-image or audio)
                                         const message = item.message
                                         return (
-                                            <div 
-                                                key={message.id} 
+                                            <div
+                                                key={message.id}
                                                 className={cn("flex animate-fade-in", message.sender_type === 'user' ? "justify-end" : "justify-start")}
                                                 style={{ animationDelay: `${index * 20}ms` }}
                                             >
@@ -679,9 +692,9 @@ export function ChatInterface({
                                                     )}
 
                                                     {message.media_type === 'audio' && message.media_url && (
-                                                        <AudioPlayer 
-                                                            src={message.media_url} 
-                                                            isFromUser={message.sender_type === 'user'} 
+                                                        <AudioPlayer
+                                                            src={message.media_url}
+                                                            isFromUser={message.sender_type === 'user'}
                                                         />
                                                     )}
 
