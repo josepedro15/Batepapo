@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -15,7 +16,20 @@ import { AudioPlayer } from '@/components/chat/audio-player'
 import MicRecorder from 'mic-recorder-to-mp3'
 
 // Types (simplified for this file)
-type Contact = { id: string; name: string; phone: string; tags: string[] | null; last_message_at?: string; avatar_url?: string }
+type Contact = { 
+    id: string; 
+    name: string; 
+    phone: string; 
+    tags: string[] | null; 
+    last_message_at?: string; 
+    avatar_url?: string;
+    unread_count?: number;
+    last_message?: {
+        body: string | null;
+        sender_type: string;
+        media_type: string | null;
+    } | null;
+}
 type Message = {
     id: string;
     body: string | null;
@@ -52,6 +66,23 @@ export function ChatInterface({
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [showDetailsPanel, setShowDetailsPanel] = useState(true)
 
+    // Contact lists state (for real-time updates)
+    const [myChats, setMyChats] = useState<any[]>(initialMyChats || [])
+    const [awaitingChats, setAwaitingChats] = useState<any[]>(initialAwaitingChats || [])
+    const [allChats, setAllChats] = useState<any[]>(initialAllChats || [])
+    const [finishedChats, setFinishedChats] = useState<any[]>(initialFinishedChats || [])
+
+    // Helper to format timestamp to Brasilia time (UTC-3)
+    const formatTime = (timestamp: string) => {
+        const date = new Date(timestamp)
+        // Convert to Brasilia timezone (UTC-3)
+        return date.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/Sao_Paulo'
+        })
+    }
+
     // Media State
     const [isRecording, setIsRecording] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
@@ -64,6 +95,9 @@ export function ChatInterface({
     const recorderRef = useRef<MicRecorder | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    // Notification context
+    const { markAsRead, playNotificationSound } = useNotification()
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -167,13 +201,42 @@ export function ChatInterface({
         scrollToBottom()
     }, [messages])
 
+    // Mark as read on mount (user is viewing chat page)
+    useEffect(() => {
+        markAsRead()
+    }, [])
+
+    // Poll contact list every 5 seconds for real-time updates
+    useEffect(() => {
+        const refreshContacts = async () => {
+            try {
+                const data = await getChatData()
+                setMyChats(data.myChats || [])
+                setAwaitingChats(data.awaitingChats || [])
+                setAllChats(data.allChats || [])
+                setFinishedChats(data.finishedChats || [])
+            } catch (error) {
+                console.error('Error refreshing contacts:', error)
+            }
+        }
+
+        // Initial sync
+        refreshContacts()
+
+        // Poll every 5 seconds
+        const pollInterval = setInterval(refreshContacts, 5000)
+
+        return () => clearInterval(pollInterval)
+    }, [])
+
     // Realtime Setup
     const supabase = createClient()
 
-
-
     useEffect(() => {
         if (!selectedContact) return
+
+        // Mark as read when selecting a contact
+        markAsRead()
 
         // 1. Load initial history
         getMessages(selectedContact.id).then(msgs => {
@@ -188,6 +251,11 @@ export function ChatInterface({
                     setMessages(prev => {
                         // Only update if there are new messages
                         if (newMsgs.length !== prev.length) {
+                            // Check if the newest message is from a contact
+                            const lastNewMsg = newMsgs[newMsgs.length - 1]
+                            if (lastNewMsg.sender_type === 'contact' && prev.length > 0) {
+                                playNotificationSound()
+                            }
                             return newMsgs
                         }
                         return prev
@@ -199,18 +267,18 @@ export function ChatInterface({
         return () => {
             clearInterval(pollInterval)
         }
-    }, [selectedContact])
+    }, [selectedContact, markAsRead, playNotificationSound])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
         if (selectedContact) {
-            const all = [...(initialMyChats || []), ...(initialAwaitingChats || []), ...(initialAllChats || []), ...(initialFinishedChats || [])]
+            const all = [...(myChats || []), ...(awaitingChats || []), ...(allChats || []), ...(finishedChats || [])]
             const updated = all.find(c => c.id === selectedContact.id)
             if (updated && JSON.stringify(updated) !== JSON.stringify(selectedContact)) {
                 setSelectedContact(updated)
             }
         }
-    }, [initialMyChats, initialAwaitingChats, initialAllChats, initialFinishedChats])
+    }, [myChats, awaitingChats, allChats, finishedChats])
 
     const handleFinishChat = async () => {
         if (!selectedContact) return
@@ -274,18 +342,18 @@ export function ChatInterface({
     }, [])
 
     const getOriginalTab = (contactId: string) => {
-        if (initialMyChats?.find(c => c.id === contactId)) return 'mine'
-        if (initialAwaitingChats?.find(c => c.id === contactId)) return 'awaiting'
-        if (initialAllChats?.find(c => c.id === contactId)) return 'all'
-        if (initialFinishedChats?.find(c => c.id === contactId)) return 'finished'
+        if (myChats?.find(c => c.id === contactId)) return 'mine'
+        if (awaitingChats?.find(c => c.id === contactId)) return 'awaiting'
+        if (allChats?.find(c => c.id === contactId)) return 'all'
+        if (finishedChats?.find(c => c.id === contactId)) return 'finished'
         return 'mine'
     }
 
     const tabs = [
-        { id: 'mine' as const, label: 'Meus', count: initialMyChats?.length || 0, color: 'primary' },
-        { id: 'awaiting' as const, label: 'Fila', count: initialAwaitingChats?.length || 0, color: 'warning' },
-        ...(userRole === 'owner' || userRole === 'manager' ? [{ id: 'all' as const, label: 'Todos', count: initialAllChats?.length || 0, color: 'accent' }] : []),
-        { id: 'finished' as const, label: 'Finalizados', count: initialFinishedChats?.length || 0, color: 'success' },
+        { id: 'mine' as const, label: 'Meus', count: myChats?.length || 0, color: 'primary' },
+        { id: 'awaiting' as const, label: 'Fila', count: awaitingChats?.length || 0, color: 'warning' },
+        ...(userRole === 'owner' || userRole === 'manager' ? [{ id: 'all' as const, label: 'Todos', count: allChats?.length || 0, color: 'accent' }] : []),
+        { id: 'finished' as const, label: 'Finalizados', count: finishedChats?.length || 0, color: 'success' },
     ]
 
     const getTabColorClasses = (tabId: string, isActive: boolean) => {
@@ -388,7 +456,7 @@ export function ChatInterface({
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto">
-                    {(activeTab === 'mine' ? initialMyChats : activeTab === 'awaiting' ? initialAwaitingChats : activeTab === 'all' ? initialAllChats : initialFinishedChats)?.map((contact, index) => (
+                    {(activeTab === 'mine' ? myChats : activeTab === 'awaiting' ? awaitingChats : activeTab === 'all' ? allChats : finishedChats)?.map((contact, index) => (
                         <button
                             key={contact.id}
                             onClick={() => setSelectedContact(contact)}
@@ -417,12 +485,36 @@ export function ChatInterface({
                                             <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
                                         </div>
                                     )}
+                                    {activeTab !== 'awaiting' && activeTab !== 'finished' && (contact.unread_count ?? 0) > 0 && (
+                                        <div className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-primary flex items-center justify-center animate-pulse">
+                                            <span className="text-[10px] font-bold text-primary-foreground">
+                                                {contact.unread_count! > 99 ? '99+' : contact.unread_count}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
                                         <span className="font-bold text-foreground truncate">{contact.name}</span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground truncate">{contact.phone}</p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                        {contact.last_message ? (
+                                            <>
+                                                {contact.last_message.sender_type === 'user' && (
+                                                    <span className="text-primary/70">Você: </span>
+                                                )}
+                                                {contact.last_message.media_type === 'audio' ? (
+                                                    '🎵 Áudio'
+                                                ) : contact.last_message.media_type === 'image' ? (
+                                                    '📷 Imagem'
+                                                ) : (
+                                                    contact.last_message.body || 'Mensagem'
+                                                )}
+                                            </>
+                                        ) : (
+                                            contact.phone
+                                        )}
+                                    </p>
                                 </div>
                             </div>
                         </button>
@@ -593,7 +685,16 @@ export function ChatInterface({
                                                         />
                                                     )}
 
-                                                    <div className="flex items-center justify-end gap-1 mt-1"></div>
+                                                    <div className="flex items-center justify-end gap-1 mt-1">
+                                                        <span className={cn(
+                                                            "text-[10px]",
+                                                            message.sender_type === 'user' 
+                                                                ? "text-primary-foreground/70" 
+                                                                : "text-muted-foreground"
+                                                        )}>
+                                                            {formatTime(message.created_at)}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )

@@ -33,7 +33,7 @@ export async function getChatData() {
         .order('created_at', { ascending: false })
 
     // 3. Fetch "All" (Only for managers/owners)
-    let allChats = []
+    let allChats: any[] = []
     if (userRole === 'owner' || userRole === 'manager') {
         const { data } = await supabase
             .from('contacts')
@@ -53,7 +53,120 @@ export async function getChatData() {
         .order('updated_at', { ascending: false })
         .limit(50) // Limit to avoid performance issues
 
-    return { myChats, awaitingChats, allChats, finishedChats, currentUserId: user.id, orgId, userRole }
+    // Helper to add last_message, unread_count and sort by last message time
+    const addLastMessagesAndUnread = async (contacts: any[] | null) => {
+        if (!contacts || contacts.length === 0) return contacts
+
+        const contactIds = contacts.map(c => c.id)
+
+        // Fetch all messages for these contacts to:
+        // 1. Get last message (most recent)
+        // 2. Count unread messages (from contacts, not viewed)
+        const { data: messages } = await supabase
+            .from('messages')
+            .select('contact_id, body, sender_type, media_type, created_at')
+            .in('contact_id', contactIds)
+            .order('created_at', { ascending: false })
+
+        // Build maps for last message and unread count
+        const lastMessageMap = new Map<string, {
+            body: string | null,
+            sender_type: string,
+            media_type: string | null,
+            created_at: string
+        }>()
+        const unreadCountMap = new Map<string, number>()
+
+        messages?.forEach(msg => {
+            // Track last message (only first occurrence per contact since sorted desc)
+            if (!lastMessageMap.has(msg.contact_id)) {
+                lastMessageMap.set(msg.contact_id, {
+                    body: msg.body,
+                    sender_type: msg.sender_type,
+                    media_type: msg.media_type,
+                    created_at: msg.created_at
+                })
+            }
+
+            // Count unread messages from contacts (sender_type = 'contact')
+            // We consider a message "unread" if it's from contact and not from user
+            if (msg.sender_type === 'contact') {
+                // Check if this message was sent after last user message to this contact
+                const currentCount = unreadCountMap.get(msg.contact_id) || 0
+                // For simplicity, count all contact messages after last user message
+                // But to keep it simple, we'll count contact messages that are newer than the first user message we find
+                const lastMsg = lastMessageMap.get(msg.contact_id)
+                if (lastMsg && lastMsg.sender_type === 'contact') {
+                    // Last message is from contact, so there are unread messages
+                    unreadCountMap.set(msg.contact_id, currentCount + 1)
+                }
+            } else if (msg.sender_type === 'user') {
+                // Once we hit a user message, stop counting for this contact
+                // (messages are sorted desc, so user message = they've seen up to this point)
+                if (!unreadCountMap.has(msg.contact_id)) {
+                    unreadCountMap.set(msg.contact_id, 0)
+                }
+            }
+        })
+
+        // Recalculate unread: count contact messages until we find a user message
+        const unreadCalculated = new Map<string, number>()
+        const seenUserMessage = new Set<string>()
+
+        messages?.forEach(msg => {
+            if (seenUserMessage.has(msg.contact_id)) return
+
+            if (msg.sender_type === 'user') {
+                seenUserMessage.add(msg.contact_id)
+                if (!unreadCalculated.has(msg.contact_id)) {
+                    unreadCalculated.set(msg.contact_id, 0)
+                }
+            } else if (msg.sender_type === 'contact') {
+                const current = unreadCalculated.get(msg.contact_id) || 0
+                unreadCalculated.set(msg.contact_id, current + 1)
+            }
+        })
+
+        // Merge into contacts
+        const enrichedContacts = contacts.map(contact => {
+            const lastMsg = lastMessageMap.get(contact.id)
+            return {
+                ...contact,
+                last_message: lastMsg ? {
+                    body: lastMsg.body,
+                    sender_type: lastMsg.sender_type,
+                    media_type: lastMsg.media_type
+                } : null,
+                last_message_at: lastMsg?.created_at || contact.created_at,
+                unread_count: unreadCalculated.get(contact.id) || 0
+            }
+        })
+
+        // Sort by last message time (most recent first)
+        return enrichedContacts.sort((a, b) => {
+            const timeA = new Date(a.last_message_at).getTime()
+            const timeB = new Date(b.last_message_at).getTime()
+            return timeB - timeA
+        })
+    }
+
+    // Add last messages and unread counts to all contact lists
+    const [myChatsWithMsg, awaitingChatsWithMsg, allChatsWithMsg, finishedChatsWithMsg] = await Promise.all([
+        addLastMessagesAndUnread(myChats),
+        addLastMessagesAndUnread(awaitingChats),
+        addLastMessagesAndUnread(allChats),
+        addLastMessagesAndUnread(finishedChats)
+    ])
+
+    return {
+        myChats: myChatsWithMsg,
+        awaitingChats: awaitingChatsWithMsg,
+        allChats: allChatsWithMsg,
+        finishedChats: finishedChatsWithMsg,
+        currentUserId: user.id,
+        orgId,
+        userRole
+    }
 }
 
 export async function getMessages(contactId: string) {
@@ -457,12 +570,42 @@ export async function getContactDeal(contactId: string) {
     const supabase = await createClient()
     const { data } = await supabase
         .from('deals')
-        .select('id, stage_id, pipeline_id')
+        .select('id, stage_id, pipeline_id, value')
         .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
     return data
+}
+
+export async function updateDealValue(contactId: string, value: number) {
+    const supabase = await createClient()
+
+    // Find the deal for this contact
+    const { data: deal } = await supabase
+        .from('deals')
+        .select('id')
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (!deal) {
+        return { error: 'Nenhum deal encontrado para este contato' }
+    }
+
+    // Update the deal value
+    const { error } = await supabase
+        .from('deals')
+        .update({ value })
+        .eq('id', deal.id)
+
+    if (error) {
+        console.error('Error updating deal value:', error)
+        return { error: error.message }
+    }
+
+    return { success: true }
 }
 
 export async function getPipelines() {

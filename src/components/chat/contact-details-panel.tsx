@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle, ListTodo, FileText } from 'lucide-react'
-import { addTag, removeTag, addNote, getNotes, getReminders, createReminder, toggleReminder, getPipelines, updateContactStage, getContactDeal } from '@/app/dashboard/chat/actions'
+import { addTag, removeTag, addNote, getNotes, getReminders, createReminder, toggleReminder, getPipelines, updateContactStage, getContactDeal, updateDealValue } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -23,6 +23,8 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
 
     const [selectedPipelineId, setSelectedPipelineId] = useState('')
     const [selectedStageId, setSelectedStageId] = useState('')
+    const [dealValue, setDealValue] = useState<string>('')
+    const [isSavingValue, setIsSavingValue] = useState(false)
 
     // Fetch Initial Data
     useEffect(() => {
@@ -46,6 +48,7 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
         if (dealState) {
             setSelectedStageId(dealState.stage_id)
             setSelectedPipelineId(dealState.pipeline_id)
+            setDealValue(dealState.value?.toString() || '')
         }
 
         setLoading(false)
@@ -133,6 +136,23 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
             }
         } else {
             console.warn('No pipeline found for stage:', stageId)
+        }
+    }
+
+    async function handleSaveValue() {
+        const numValue = parseFloat(dealValue.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
+        setIsSavingValue(true)
+        try {
+            const result = await updateDealValue(contact.id, numValue)
+            if (result.error) {
+                toast.error(result.error)
+            } else {
+                toast.success('Valor atualizado')
+            }
+        } catch (error) {
+            toast.error('Erro ao salvar valor')
+        } finally {
+            setIsSavingValue(false)
         }
     }
 
@@ -318,6 +338,32 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                     </optgroup>
                                 ))}
                             </select>
+
+                            {/* Deal Value */}
+                            <div className="mt-4">
+                                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5 block">
+                                    Valor da Negociação
+                                </label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                                        <input
+                                            type="text"
+                                            value={dealValue}
+                                            onChange={(e) => setDealValue(e.target.value)}
+                                            placeholder="0,00"
+                                            className="w-full bg-muted/50 border border-border rounded-xl pl-10 pr-3 py-3 text-sm text-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleSaveValue}
+                                        disabled={isSavingValue}
+                                        className="px-4 bg-primary hover:bg-primary/90 rounded-xl text-primary-foreground text-sm font-medium transition-colors disabled:opacity-50"
+                                    >
+                                        {isSavingValue ? '...' : 'Salvar'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Recent Notes Preview */}
