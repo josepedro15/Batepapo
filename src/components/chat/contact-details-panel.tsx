@@ -521,15 +521,28 @@ export function ContactDetailsPanel({ contact, messages, onClose }: { contact: a
                             )}
                         </div>
 
-                        <div className="px-2">
-                            <h5 className="text-[10px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
-                                <AlertCircle className="h-3 w-3" /> Info
-                            </h5>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                • <strong>{aiRemaining !== null ? aiRemaining : '--'}</strong> solicitações restantes hoje.<br />
-                                • Limitado a 40/dia.<br />
-                                • A IA analisa apenas texto (imagens são ignoradas).<br />
-                                • Verifique a resposta antes de enviar.
+                        <div className="px-2 pt-2">
+                            <div className="flex items-center justify-between mb-2">
+                                <h5 className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                                    <AlertCircle className="h-3 w-3" /> Uso Diário
+                                </h5>
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                    {aiRemaining !== null ? aiRemaining : '--'}/40
+                                </span>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="h-2 w-full bg-muted/50 rounded-full overflow-hidden border border-border/30">
+                                <div
+                                    className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all duration-500 ease-out"
+                                    style={{
+                                        width: aiRemaining !== null ? `${Math.max(0, Math.min(100, ((40 - aiRemaining) / 40) * 100))}%` : '0%'
+                                    }}
+                                />
+                            </div>
+
+                            <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                                {aiRemaining !== null ? `${aiRemaining} solicitações restantes hoje` : 'Calculando...'}
                             </p>
                         </div>
                     </div>
