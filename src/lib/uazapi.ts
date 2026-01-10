@@ -454,11 +454,24 @@ export async function fetchProfilePicture(
             })
         })
 
+        if (!response.ok) {
+            console.error('UAZAPI fetchProfilePicture error:', await response.text())
+            // return null
+        }
+
+        const data = await response.json()
+        // API usually returns { link: "url", ... } or just the url string in some versions
+        // Based on similar APIs, it might be data.link, data.url, or data.picture
+
+        // Debug
+        // console.log('Profile Pic Response:', data)
+
+        return data.link || data.url || data.picture || data.profilePic || null
+
     } catch (error) {
         console.error('Error fetching profile picture:', error)
         return null
     }
-    return null
 }
 
 /**

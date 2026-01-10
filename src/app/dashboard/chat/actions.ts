@@ -605,3 +605,44 @@ export async function syncProfilePictures() {
         return { error: e.message || 'Unknown error', logs: ['Error occurred'] }
     }
 }
+
+export async function refreshContactAvatar(contactId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // 1. Get contact
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('phone, organization_id')
+        .eq('id', contactId)
+        .single()
+
+    if (!contact) return { error: 'Contact not found' }
+
+    // 2. Get instance
+    const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_token')
+        .eq('organization_id', contact.organization_id)
+        .eq('status', 'connected')
+        .single()
+
+    if (!instance) return { error: 'WhatsApp not connected' }
+
+    // 3. Fetch from API
+    const avatarUrl = await uazapi.fetchProfilePicture(instance.instance_token, contact.phone)
+
+    if (avatarUrl) {
+        // 4. Update DB
+        await supabase
+            .from('contacts')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', contactId)
+
+        revalidatePath('/dashboard/chat')
+        return { success: true, avatarUrl }
+    }
+
+    return { success: false, message: 'No avatar found' }
+}

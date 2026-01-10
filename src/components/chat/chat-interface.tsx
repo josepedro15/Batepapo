@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, refreshContactAvatar } from '@/app/dashboard/chat/actions'
+
+// ... existing code ...
+
+
+
+// Automatic Sync on Mount (once)
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -55,7 +61,7 @@ export function ChatInterface({
     // Media State
     const [isRecording, setIsRecording] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
-    
+
     // Gallery State
     const [galleryImages, setGalleryImages] = useState<string[]>([])
     const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
@@ -211,6 +217,17 @@ export function ChatInterface({
             }
         }
     }, [initialMyChats, initialAwaitingChats, initialAllChats, initialFinishedChats])
+
+    // Refresh Avatar on selection if missing
+    useEffect(() => {
+        if (selectedContact && !selectedContact.avatar_url) {
+            refreshContactAvatar(selectedContact.id).then(res => {
+                if (res.success && res.avatarUrl) {
+                    setSelectedContact(prev => prev ? { ...prev, avatar_url: res.avatarUrl } : null)
+                }
+            })
+        }
+    }, [selectedContact])
 
     const handleFinishChat = async () => {
         if (!selectedContact) return
@@ -544,8 +561,8 @@ export function ChatInterface({
                                     if (item.type === 'image-group') {
                                         // Render grouped images
                                         return (
-                                            <div 
-                                                key={item.firstMessageId} 
+                                            <div
+                                                key={item.firstMessageId}
                                                 className={cn("flex animate-fade-in", item.senderType === 'user' ? "justify-end" : "justify-start")}
                                                 style={{ animationDelay: `${index * 20}ms` }}
                                             >
@@ -557,7 +574,7 @@ export function ChatInterface({
                                                             : 'bg-card rounded-tl-md border border-border/50'
                                                     )}
                                                 >
-                                                    <MessageImageGroup 
+                                                    <MessageImageGroup
                                                         images={item.images}
                                                         onOpenGallery={(idx) => openGallery(item.images, idx)}
                                                         isFromUser={item.senderType === 'user'}
@@ -569,8 +586,8 @@ export function ChatInterface({
                                         // Render single message (non-image or audio)
                                         const message = item.message
                                         return (
-                                            <div 
-                                                key={message.id} 
+                                            <div
+                                                key={message.id}
                                                 className={cn("flex animate-fade-in", message.sender_type === 'user' ? "justify-end" : "justify-start")}
                                                 style={{ animationDelay: `${index * 20}ms` }}
                                             >
@@ -587,9 +604,9 @@ export function ChatInterface({
                                                     )}
 
                                                     {message.media_type === 'audio' && message.media_url && (
-                                                        <AudioPlayer 
-                                                            src={message.media_url} 
-                                                            isFromUser={message.sender_type === 'user'} 
+                                                        <AudioPlayer
+                                                            src={message.media_url}
+                                                            isFromUser={message.sender_type === 'user'}
                                                         />
                                                     )}
 
