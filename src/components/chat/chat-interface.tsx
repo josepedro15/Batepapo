@@ -181,6 +181,9 @@ export function ChatInterface({
     useEffect(() => {
         if (!selectedContact) return
 
+        // Clear messages immediately to avoid showing previous chat
+        setMessages([])
+
         // 1. Load initial history
         getMessages(selectedContact.id).then(msgs => {
             setMessages(msgs || [])
