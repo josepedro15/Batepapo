@@ -349,6 +349,68 @@ export async function getContacts(instanceToken: string): Promise<WhatsAppContac
 }
 
 /**
+ * List contacts with pagination
+ * POST /contacts/list
+ */
+export interface ContactListParams {
+    page?: number
+    pageSize?: number // max 1000
+    limit?: number // alias for pageSize
+    offset?: number
+    search?: string // Optional search term
+}
+
+export interface ContactListResponse {
+    contacts: WhatsAppContact[]
+    total?: number
+    page?: number
+    pageSize?: number
+}
+
+export async function listContacts(
+    instanceToken: string,
+    params: ContactListParams = {}
+): Promise<ContactListResponse> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/contacts/list`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            page: params.page || 1,
+            pageSize: params.pageSize || 20,
+            search: params.search // Assuming the API supports search in body
+        })
+    })
+
+    if (!response.ok) {
+        throw new Error('Failed to list contacts')
+    }
+
+    const data = await response.json()
+
+    // Handle different response structures gracefully
+    const rawContacts = Array.isArray(data) ? data : (data.contacts || data.items || [])
+
+    const formattedContacts = rawContacts
+        .filter((c: any) => !c.id?.includes('@g.us'))
+        .map((c: any) => ({
+            id: c.id,
+            name: c.name || c.notify || c.id?.split('@')[0] || 'Unknown',
+            phone: c.id?.split('@')[0] || '',
+            profilePicUrl: c.profilePicUrl || c.image || c.imagePreview || c.picture
+        }))
+
+    return {
+        contacts: formattedContacts,
+        total: data.total || formattedContacts.length,
+        page: params.page || 1,
+        pageSize: params.pageSize || 20
+    }
+}
+
+/**
  * Fetch profile picture for a specific phone number
  * POST /misc/downProfile
  */
