@@ -514,3 +514,168 @@ export async function downloadMedia(
         return null
     }
 }
+
+// =====================================================
+// MASS CAMPAIGN FUNCTIONS
+// =====================================================
+
+/**
+ * Message types for mass campaigns
+ */
+export interface MassCampaignMessage {
+    number: string
+    type: 'text' | 'button' | 'list' | 'document' | 'carousel'
+    text?: string
+    file?: string
+    docName?: string
+    footerText?: string
+    imageButton?: string
+    listButton?: string
+    choices?: string[]
+}
+
+/**
+ * Options for creating a mass campaign
+ */
+export interface MassCampaignOptions {
+    delayMin?: number  // seconds (default: 3)
+    delayMax?: number  // seconds (default: 6)
+    info?: string      // campaign description
+    scheduledFor?: number // timestamp in ms or minutes from now
+    messages: MassCampaignMessage[]
+}
+
+/**
+ * Response from creating a mass campaign
+ */
+export interface MassCampaignResponse {
+    folder_id: string
+    status: 'scheduled' | 'sending'
+    total_messages: number
+}
+
+/**
+ * Create a mass campaign using advanced sender
+ * POST /sender/advanced
+ */
+export async function createMassCampaign(
+    instanceToken: string,
+    options: MassCampaignOptions
+): Promise<MassCampaignResponse> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/sender/advanced`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            delayMin: options.delayMin || 3,
+            delayMax: options.delayMax || 6,
+            info: options.info || 'Campanha via CRM',
+            scheduled_for: options.scheduledFor || 1, // 1 = start immediately (1 minute)
+            messages: options.messages
+        })
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        console.error('UAZAPI createMassCampaign error:', error)
+        throw new Error(`Failed to create mass campaign: ${error}`)
+    }
+
+    const data = await response.json()
+
+    return {
+        folder_id: data.folder_id || data.folderId || data.id,
+        status: data.status || 'scheduled',
+        total_messages: options.messages.length
+    }
+}
+
+/**
+ * Control an existing campaign (stop, continue, delete)
+ * POST /sender/edit
+ */
+export async function controlCampaign(
+    instanceToken: string,
+    folderId: string,
+    action: 'stop' | 'continue' | 'delete'
+): Promise<{ success: boolean; status?: string }> {
+    const response = await fetch(`${UAZAPI_BASE_URL}/sender/edit`, {
+        method: 'POST',
+        headers: {
+            'token': instanceToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            folder_id: folderId,
+            action: action
+        })
+    })
+
+    if (!response.ok) {
+        const error = await response.text()
+        console.error('UAZAPI controlCampaign error:', error)
+        throw new Error(`Failed to ${action} campaign: ${error}`)
+    }
+
+    const data = await response.json()
+
+    // Map action to expected status
+    const statusMap: Record<string, string> = {
+        'stop': 'paused',
+        'continue': 'sending',
+        'delete': 'deleting'
+    }
+
+    return {
+        success: true,
+        status: data.status || statusMap[action]
+    }
+}
+
+/**
+ * Build campaign messages array from contacts and message template
+ * Helper function to format messages for UAZAPI
+ */
+export function buildCampaignMessages(
+    contacts: Array<{ phone: string; name?: string }>,
+    messageTemplates: Array<{
+        type: MassCampaignMessage['type']
+        text?: string
+        file?: string
+        docName?: string
+        footerText?: string
+        imageButton?: string
+        listButton?: string
+        choices?: string[]
+    }>
+): MassCampaignMessage[] {
+    const messages: MassCampaignMessage[] = []
+
+    for (const contact of contacts) {
+        const cleanPhone = contact.phone.replace(/\D/g, '')
+
+        for (const template of messageTemplates) {
+            // Replace {{nome}} placeholder with contact name
+            const personalizedText = template.text?.replace(
+                /\{\{nome\}\}/gi,
+                contact.name || 'Cliente'
+            )
+
+            messages.push({
+                number: cleanPhone,
+                type: template.type,
+                text: personalizedText,
+                file: template.file,
+                docName: template.docName,
+                footerText: template.footerText,
+                imageButton: template.imageButton,
+                listButton: template.listButton,
+                choices: template.choices
+            })
+        }
+    }
+
+    return messages
+}
