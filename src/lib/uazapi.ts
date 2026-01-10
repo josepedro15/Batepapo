@@ -393,14 +393,31 @@ export async function listContacts(
     // Handle different response structures gracefully
     const rawContacts = Array.isArray(data) ? data : (data.contacts || data.items || [])
 
+    // DEBUG: Log first contact structure to help debug "Unknown" issue
+    if (rawContacts.length > 0) {
+        // console.log('[UAZAPI DEBUG] First contact keys:', Object.keys(rawContacts[0]))
+    }
+
     const formattedContacts = rawContacts
-        .filter((c: any) => !c.id?.includes('@g.us'))
-        .map((c: any) => ({
-            id: c.id,
-            name: c.name || c.notify || c.id?.split('@')[0] || 'Unknown',
-            phone: c.id?.split('@')[0] || '',
-            profilePicUrl: c.profilePicUrl || c.image || c.imagePreview || c.picture
-        }))
+        .filter((c: any) => {
+            const id = c.jid || c.id || c.chatId
+            return id && !id.includes('@g.us')
+        })
+        .map((c: any) => {
+            const id = c.jid || c.id || c.chatId
+            const phone = id ? id.split('@')[0] : (c.number || c.phone || '')
+
+            // Map fields based on verified response: {"contact_name": "...", "jid": "..."}
+            const name = c.contact_name || c.contact_FirstName || c.name || c.pushName || c.notify || c.verifiedName || phone || 'Unknown'
+
+            return {
+                id: id,
+                name: name,
+                phone: phone,
+                // API response doesn't include profile pic in list
+                profilePicUrl: c.profilePicUrl || c.image || c.picture || null
+            }
+        })
 
     return {
         contacts: formattedContacts,
