@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { Users, Search, Phone, Mail, UserCheck, UserX, Filter, Download } from 'lucide-react'
 import { syncProfilePictures } from '@/app/dashboard/chat/actions'
