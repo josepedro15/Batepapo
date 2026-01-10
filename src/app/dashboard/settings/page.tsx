@@ -4,6 +4,7 @@ import { GenerateKeyForm } from './generate-key-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { TagManagement } from '@/components/settings/tag-management'
 import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
+import { AISettingsCard } from '@/components/settings/ai-settings-card'
 import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound } from 'lucide-react'
 
 export default async function SettingsPage() {
@@ -47,7 +48,7 @@ export default async function SettingsPage() {
                     </div>
                     <h2 className="text-headline text-foreground">Equipe & Conexões</h2>
                 </div>
-                
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 animate-slide-up" style={{ animationDelay: '150ms' }}>
                         <TeamManagement members={members || []} />
@@ -56,6 +57,11 @@ export default async function SettingsPage() {
                         <WhatsAppConnectionCard />
                     </div>
                 </div>
+            </section>
+
+            {/* Seção: IA Agent Config */}
+            <section className="animate-fade-in" style={{ animationDelay: '200ms' }}>
+                <AISettingsCard />
             </section>
 
             {/* Seção: Integrações */}
@@ -88,8 +94,8 @@ export default async function SettingsPage() {
                         {/* Keys List */}
                         <div className="space-y-3 mt-4">
                             {keys?.map((key, index) => (
-                                <div 
-                                    key={key.id} 
+                                <div
+                                    key={key.id}
                                     className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 group hover:border-accent/30 hover:bg-accent/5 transition-all duration-300"
                                     style={{ animationDelay: `${350 + index * 50}ms` }}
                                 >

@@ -249,3 +249,12 @@ CREATE TABLE public.ai_usage_logs (
   CONSTRAINT ai_usage_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE INDEX ai_usage_logs_org_date_idx ON public.ai_usage_logs (organization_id, created_at);
+
+CREATE TABLE public.ai_settings (
+  organization_id uuid NOT NULL references public.organizations(id) primary key,
+  system_prompt text,
+  model text default 'gpt-4o',
+  temperature numeric default 0.7,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  updated_at timestamp with time zone default timezone('utc'::text, now())
+);

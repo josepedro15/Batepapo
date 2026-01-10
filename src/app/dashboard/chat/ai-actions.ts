@@ -48,7 +48,18 @@ export async function generateAIResponse(messages: Message[]) {
         return { error: 'Limite diário de 40 solicitações de IA atingido.' }
     }
 
-    // 3. Prepare Messages for OpenAI
+    // 3. Fetch Organization Settings
+    const { data: settings } = await supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('organization_id', orgId)
+        .single()
+
+    const model = settings?.model || 'gpt-4o'
+    const temperature = settings?.temperature ?? 0.7
+    const customPrompt = settings?.system_prompt
+
+    // 4. Prepare Messages for OpenAI
     // Take last 30 messages
     const recentMessages = messages.slice(0, 30).reverse() // Assuming input 'messages' is sorted desc (newest first). We reverse to chronological order.
 
@@ -72,12 +83,14 @@ export async function generateAIResponse(messages: Message[]) {
     })).filter(m => m.content)
 
     // Add system prompt
-    const systemPrompt = {
-        role: 'system',
-        content: `Você é um assistente de vendas experiente e prestativo. Seu objetivo é ajudar o atendente a responder o cliente da melhor forma possível, visando fechar vendas ou resolver dúvidas com clareza e empatia.
+    const defaultPrompt = `Você é um assistente de vendas experiente e prestativo. Seu objetivo é ajudar o atendente a responder o cliente da melhor forma possível, visando fechar vendas ou resolver dúvidas com clareza e empatia.
     Analise o histórico da conversa e sugira uma resposta adequada para a última mensagem do cliente.
     Mantenha um tom profissional, porém amigável.
     Responda em português do Brasil.`
+
+    const systemPrompt = {
+        role: 'system',
+        content: customPrompt || defaultPrompt
     }
 
     // Lazy init OpenAI to prevent top-level crashes if env is missing
@@ -87,12 +100,12 @@ export async function generateAIResponse(messages: Message[]) {
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o', // Or gpt-3.5-turbo if cost is a concern, but user asked for "trained AI", 4o is better.
+            model: model, // Or gpt-3.5-turbo if cost is a concern, but user asked for "trained AI", 4o is better.
             messages: [
                 systemPrompt,
                 ...formattedMessages
             ] as any,
-            temperature: 0.7,
+            temperature: temperature,
             max_tokens: 500
         })
 

@@ -382,3 +382,40 @@ export async function updateTag(tagId: string, name: string, color: string) {
     revalidatePath('/dashboard/chat')
     return { success: true }
 }
+
+// --- AI Settings Actions ---
+
+export async function updateAISettings(data: { prompt: string; model: string; temperature: number }) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: membership } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
+    if (!membership) return { error: 'No org' }
+
+    // Upsert settings
+    const { error } = await supabase.from('ai_settings').upsert({
+        organization_id: membership.organization_id,
+        system_prompt: data.prompt,
+        model: data.model,
+        temperature: data.temperature,
+        updated_at: new Date().toISOString()
+    })
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/dashboard/settings')
+    return { success: true }
+}
+
+export async function getAISettings() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: membership } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
+    if (!membership) return null
+
+    const { data } = await supabase.from('ai_settings').select('*').eq('organization_id', membership.organization_id).single()
+    return data
+}
