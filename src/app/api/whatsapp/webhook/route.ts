@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
             console.log('Looking for contact:', { rawPhone, contactName, organizationId })
 
             // Find or create contact
-            let contactId: string
+            let contactId: string | undefined
 
             // Try to find existing contact by phone
             const { data: existingContact } = await supabase
@@ -217,7 +217,8 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Create new contact if not found
-                if (!contactId!) {
+                // Create new contact if not found
+                if (!contactId) {
                     console.log('Creating new contact...')
                     const { data: newContact, error } = await supabase
                         .from('contacts')
@@ -237,8 +238,11 @@ export async function POST(request: NextRequest) {
                     }
                     contactId = newContact.id
                     console.log('Created new contact:', contactId)
+
                 }
             }
+
+
 
             // Update avatar_url if provided and different
             const newAvatarUrl = msg.senderPhoto || chat?.imagePreview || chat?.image || chat?.profilePicUrl
