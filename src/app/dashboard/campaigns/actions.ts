@@ -213,20 +213,52 @@ export async function getCampaigns(): Promise<CampaignData[]> {
 }
 
 /**
- * Get contacts for contact selector
+ * Get contacts for contact selector with optional filters
  */
-export async function getContactsForCampaign(page = 1, pageSize = 50) {
+export async function getContactsForCampaign(
+    page = 1,
+    pageSize = 50,
+    filters?: { tagName?: string; stageId?: string }
+) {
     const supabase = await createClient()
     const { organizationId } = await getOrgAndInstance()
 
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
 
-    const { data: contacts, error, count } = await supabase
+    // Build query
+    let query = supabase
         .from('contacts')
-        .select('id, name, phone, avatar_url', { count: 'exact' })
+        .select('id, name, phone, avatar_url, tags', { count: 'exact' })
         .eq('organization_id', organizationId)
         .neq('status', 'closed')
+
+    // Apply tag filter (tags is an array column)
+    if (filters?.tagName) {
+        query = query.contains('tags', [filters.tagName])
+    }
+
+    // Apply stage filter (need to join with deals)
+    // For now, we'll fetch contacts that have a deal in the specified stage
+    let contactIdsInStage: string[] | null = null
+    if (filters?.stageId) {
+        const { data: deals } = await supabase
+            .from('deals')
+            .select('contact_id')
+            .eq('organization_id', organizationId)
+            .eq('stage_id', filters.stageId)
+
+        if (deals && deals.length > 0) {
+            contactIdsInStage = deals.map(d => d.contact_id)
+            query = query.in('id', contactIdsInStage)
+        } else {
+            // No contacts in this stage
+            return { contacts: [], total: 0, hasMore: false }
+        }
+    }
+
+    // Execute query with pagination
+    const { data: contacts, error, count } = await query
         .order('name')
         .range(from, to)
 
@@ -235,12 +267,85 @@ export async function getContactsForCampaign(page = 1, pageSize = 50) {
         return { contacts: [], total: 0, hasMore: false }
     }
 
+    // If we have stage filter, fetch stage names for display
+    let contactsWithStage = contacts || []
+    if (filters?.stageId && contactsWithStage.length > 0) {
+        const { data: stageData } = await supabase
+            .from('stages')
+            .select('id, name')
+            .eq('id', filters.stageId)
+            .single()
+
+        if (stageData) {
+            contactsWithStage = contactsWithStage.map(c => ({
+                ...c,
+                stage_id: filters.stageId,
+                stage_name: stageData.name
+            }))
+        }
+    }
+
     return {
-        contacts: contacts || [],
+        contacts: contactsWithStage,
         total: count || 0,
         hasMore: (count || 0) > to + 1
     }
 }
+
+/**
+ * Get all tags for the organization
+ */
+export async function getTags() {
+    const supabase = await createClient()
+    const { organizationId } = await getOrgAndInstance()
+
+    const { data: tags, error } = await supabase
+        .from('tags')
+        .select('id, name, color')
+        .eq('organization_id', organizationId)
+        .order('name')
+
+    if (error) {
+        console.error('Get tags error:', error)
+        return []
+    }
+
+    return tags || []
+}
+
+/**
+ * Get all stages for the organization (from default pipeline)
+ */
+export async function getStages() {
+    const supabase = await createClient()
+    const { organizationId } = await getOrgAndInstance()
+
+    // Get the default pipeline first
+    const { data: pipeline } = await supabase
+        .from('pipelines')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .limit(1)
+        .single()
+
+    if (!pipeline) {
+        return []
+    }
+
+    const { data: stages, error } = await supabase
+        .from('stages')
+        .select('id, name, color')
+        .eq('pipeline_id', pipeline.id)
+        .order('position')
+
+    if (error) {
+        console.error('Get stages error:', error)
+        return []
+    }
+
+    return stages || []
+}
+
 
 /**
  * Pause a running campaign

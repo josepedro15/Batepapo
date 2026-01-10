@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, Users, Check, ChevronDown, X, Loader2 } from 'lucide-react'
+import { Search, Users, Check, ChevronDown, X, Loader2, Tag, Layers, Filter } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface Contact {
@@ -9,6 +9,21 @@ export interface Contact {
     name: string
     phone: string
     avatar_url?: string | null
+    tags?: string[] | null
+    stage_id?: string | null
+    stage_name?: string | null
+}
+
+export interface Tag {
+    id: string
+    name: string
+    color: string
+}
+
+export interface Stage {
+    id: string
+    name: string
+    color?: string | null
 }
 
 interface ContactSelectorProps {
@@ -18,6 +33,21 @@ interface ContactSelectorProps {
     loading?: boolean
     onLoadMore?: () => void
     hasMore?: boolean
+    tags?: Tag[]
+    stages?: Stage[]
+    onFilterChange?: (filters: { tagName?: string; stageId?: string }) => void
+}
+
+// Tag color mapping
+const tagColors: Record<string, string> = {
+    violet: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+    red: 'bg-red-500/20 text-red-400 border-red-500/30',
+    amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    cyan: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+    green: 'bg-green-500/20 text-green-400 border-green-500/30',
+    blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    pink: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+    orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 }
 
 export function ContactSelector({
@@ -26,13 +56,29 @@ export function ContactSelector({
     onChange,
     loading = false,
     onLoadMore,
-    hasMore = false
+    hasMore = false,
+    tags = [],
+    stages = [],
+    onFilterChange
 }: ContactSelectorProps) {
     const [search, setSearch] = useState('')
     const [isOpen, setIsOpen] = useState(false)
+    const [showFilters, setShowFilters] = useState(false)
+    const [selectedTag, setSelectedTag] = useState<string>('')
+    const [selectedStage, setSelectedStage] = useState<string>('')
     const containerRef = useRef<HTMLDivElement>(null)
 
-    // Filter contacts by search
+    // Apply filters when changed
+    useEffect(() => {
+        if (onFilterChange) {
+            onFilterChange({
+                tagName: selectedTag || undefined,
+                stageId: selectedStage || undefined
+            })
+        }
+    }, [selectedTag, selectedStage, onFilterChange])
+
+    // Filter contacts by search (local filtering)
     const filteredContacts = contacts.filter(c =>
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.phone.includes(search)
@@ -59,8 +105,17 @@ export function ContactSelector({
         onChange([])
     }
 
+    // Clear filters
+    const clearFilters = () => {
+        setSelectedTag('')
+        setSelectedStage('')
+    }
+
     // Get selected contacts for display
     const selectedContacts = contacts.filter(c => selectedIds.includes(c.id))
+
+    // Check if filters are active
+    const hasActiveFilters = selectedTag || selectedStage
 
     // Handle scroll for infinite loading
     const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -122,6 +177,129 @@ export function ContactSelector({
                     )}
                 </div>
             </div>
+
+            {/* Filter Buttons */}
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                        showFilters || hasActiveFilters
+                            ? "bg-primary/10 text-primary border border-primary/20"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
+                    )}
+                >
+                    <Filter className="h-4 w-4" />
+                    Filtros
+                    {hasActiveFilters && (
+                        <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                            {(selectedTag ? 1 : 0) + (selectedStage ? 1 : 0)}
+                        </span>
+                    )}
+                </button>
+
+                {hasActiveFilters && (
+                    <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                    >
+                        Limpar filtros
+                    </button>
+                )}
+            </div>
+
+            {/* Filters Panel */}
+            {showFilters && (
+                <div className="glass p-4 rounded-xl border border-border space-y-4">
+                    {/* Tag Filter */}
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
+                            <Tag className="h-4 w-4 text-primary" />
+                            Filtrar por Etiqueta
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTag('')}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                    !selectedTag
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-muted/50 text-muted-foreground border-border hover:border-primary/50"
+                                )}
+                            >
+                                Todas
+                            </button>
+                            {tags.map((tag) => (
+                                <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() => setSelectedTag(selectedTag === tag.name ? '' : tag.name)}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                        selectedTag === tag.name
+                                            ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                                            : "",
+                                        tagColors[tag.color] || tagColors.violet
+                                    )}
+                                >
+                                    {tag.name}
+                                </button>
+                            ))}
+                            {tags.length === 0 && (
+                                <span className="text-xs text-muted-foreground">Nenhuma etiqueta cadastrada</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Stage Filter */}
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
+                            <Layers className="h-4 w-4 text-accent" />
+                            Filtrar por Estágio no CRM
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedStage('')}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                    !selectedStage
+                                        ? "bg-accent text-accent-foreground border-accent"
+                                        : "bg-muted/50 text-muted-foreground border-border hover:border-accent/50"
+                                )}
+                            >
+                                Todos
+                            </button>
+                            {stages.map((stage) => (
+                                <button
+                                    key={stage.id}
+                                    type="button"
+                                    onClick={() => setSelectedStage(selectedStage === stage.id ? '' : stage.id)}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                        selectedStage === stage.id
+                                            ? "bg-accent text-accent-foreground border-accent"
+                                            : "bg-muted/50 text-muted-foreground border-border hover:border-accent/50"
+                                    )}
+                                    style={stage.color ? {
+                                        backgroundColor: `${stage.color}20`,
+                                        borderColor: `${stage.color}50`,
+                                        color: stage.color
+                                    } : undefined}
+                                >
+                                    {stage.name}
+                                </button>
+                            ))}
+                            {stages.length === 0 && (
+                                <span className="text-xs text-muted-foreground">Nenhum estágio cadastrado</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Dropdown trigger */}
             <button
@@ -197,8 +375,17 @@ export function ContactSelector({
                         {filteredContacts.length === 0 ? (
                             <div className="p-6 text-center">
                                 <p className="text-muted-foreground">
-                                    {search ? 'Nenhum contato encontrado' : 'Nenhum contato disponível'}
+                                    {search || hasActiveFilters ? 'Nenhum contato encontrado' : 'Nenhum contato disponível'}
                                 </p>
+                                {hasActiveFilters && (
+                                    <button
+                                        type="button"
+                                        onClick={clearFilters}
+                                        className="mt-2 text-xs text-primary hover:underline"
+                                    >
+                                        Limpar filtros
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="divide-y divide-border/50">
@@ -240,8 +427,34 @@ export function ContactSelector({
                                             </div>
 
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-foreground truncate">{contact.name}</p>
-                                                <p className="text-sm text-muted-foreground">{formatPhone(contact.phone)}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium text-foreground truncate">{contact.name}</p>
+                                                    {contact.stage_name && (
+                                                        <span className="px-1.5 py-0.5 text-xs bg-accent/10 text-accent rounded">
+                                                            {contact.stage_name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm text-muted-foreground">{formatPhone(contact.phone)}</p>
+                                                    {contact.tags && contact.tags.length > 0 && (
+                                                        <div className="flex items-center gap-1">
+                                                            {contact.tags.slice(0, 2).map((tag, idx) => (
+                                                                <span
+                                                                    key={idx}
+                                                                    className="px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded"
+                                                                >
+                                                                    {tag}
+                                                                </span>
+                                                            ))}
+                                                            {contact.tags.length > 2 && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    +{contact.tags.length - 2}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </button>
                                     )
@@ -261,6 +474,7 @@ export function ContactSelector({
                     <div className="p-3 border-t border-border bg-muted/30">
                         <p className="text-xs text-muted-foreground text-center">
                             {filteredContacts.length} contato{filteredContacts.length !== 1 ? 's' : ''} encontrado{filteredContacts.length !== 1 ? 's' : ''}
+                            {hasActiveFilters && ' (filtrado)'}
                         </p>
                     </div>
                 </div>

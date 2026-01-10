@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, useCallback } from 'react'
 import {
     Megaphone,
     Send,
@@ -26,12 +26,16 @@ import {
     CampaignCardSkeleton,
     type MessageContent,
     type Contact,
-    type Campaign
+    type Campaign,
+    type Tag,
+    type Stage
 } from '@/components/campaigns'
 import {
     createCampaign,
     getCampaigns,
     getContactsForCampaign,
+    getTags,
+    getStages,
     pauseCampaign,
     resumeCampaign,
     deleteCampaign,
@@ -58,27 +62,48 @@ export default function CampaignsPage() {
     // Data state
     const [contacts, setContacts] = useState<Contact[]>([])
     const [campaigns, setCampaigns] = useState<Campaign[]>([])
+    const [tags, setTags] = useState<Tag[]>([])
+    const [stages, setStages] = useState<Stage[]>([])
     const [loadingContacts, setLoadingContacts] = useState(false)
     const [loadingCampaigns, setLoadingCampaigns] = useState(true)
     const [contactsPage, setContactsPage] = useState(1)
     const [hasMoreContacts, setHasMoreContacts] = useState(false)
+    const [currentFilters, setCurrentFilters] = useState<{ tagName?: string; stageId?: string }>({})
 
-    // Load contacts
+    // Load contacts with filters
+    const loadContacts = useCallback(async (filters?: { tagName?: string; stageId?: string }) => {
+        setLoadingContacts(true)
+        setContactsPage(1)
+        try {
+            const result = await getContactsForCampaign(1, 100, filters)
+            setContacts(result.contacts)
+            setHasMoreContacts(result.hasMore)
+        } catch (err) {
+            console.error('Error loading contacts:', err)
+        } finally {
+            setLoadingContacts(false)
+        }
+    }, [])
+
+    // Initial load
     useEffect(() => {
-        async function loadContacts() {
-            setLoadingContacts(true)
+        loadContacts()
+
+        // Load tags and stages
+        async function loadFiltersData() {
             try {
-                const result = await getContactsForCampaign(1, 100)
-                setContacts(result.contacts)
-                setHasMoreContacts(result.hasMore)
+                const [tagsData, stagesData] = await Promise.all([
+                    getTags(),
+                    getStages()
+                ])
+                setTags(tagsData)
+                setStages(stagesData)
             } catch (err) {
-                console.error('Error loading contacts:', err)
-            } finally {
-                setLoadingContacts(false)
+                console.error('Error loading filters data:', err)
             }
         }
-        loadContacts()
-    }, [])
+        loadFiltersData()
+    }, [loadContacts])
 
     // Load campaigns
     useEffect(() => {
@@ -97,12 +122,19 @@ export default function CampaignsPage() {
         }
     }
 
+    // Handle filter change from ContactSelector
+    const handleFilterChange = useCallback((filters: { tagName?: string; stageId?: string }) => {
+        setCurrentFilters(filters)
+        setSelectedContactIds([]) // Clear selection when filters change
+        loadContacts(filters)
+    }, [loadContacts])
+
     // Load more contacts
     const loadMoreContacts = async () => {
         if (loadingContacts || !hasMoreContacts) return
         setLoadingContacts(true)
         try {
-            const result = await getContactsForCampaign(contactsPage + 1, 100)
+            const result = await getContactsForCampaign(contactsPage + 1, 100, currentFilters)
             setContacts(prev => [...prev, ...result.contacts])
             setContactsPage(prev => prev + 1)
             setHasMoreContacts(result.hasMore)
@@ -379,6 +411,9 @@ export default function CampaignsPage() {
                                     loading={loadingContacts}
                                     hasMore={hasMoreContacts}
                                     onLoadMore={loadMoreContacts}
+                                    tags={tags}
+                                    stages={stages}
+                                    onFilterChange={handleFilterChange}
                                 />
                             </div>
 
