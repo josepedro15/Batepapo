@@ -34,7 +34,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
 
     const fetchContacts = useCallback(async (pageNum: number, searchTerm: string, reset: boolean = false) => {
         try {
-            if (pageNum === 1) setIsLoadingContacts(true)
+            setIsLoadingContacts(true)
 
             const response = await fetch('/api/contacts/whatsapp', {
                 method: 'POST',
@@ -49,16 +49,26 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             const data = await response.json()
 
             if (response.ok) {
-                setContacts(prev => reset ? data.contacts : [...prev, ...data.contacts])
+                setContacts(prev => {
+                    if (reset) return data.contacts
+
+                    // Deduplicate
+                    const newContacts = data.contacts.filter((newC: WhatsAppContact) =>
+                        !prev.some(existing => existing.id === newC.id)
+                    )
+                    return [...prev, ...newContacts]
+                })
                 setHasMore(data.contacts.length === 20) // Assuming pageSize is 20
             } else {
                 // If instance not connected/found, just stop trying to load
                 if (pageNum === 1) setContacts([])
+                setHasMore(false)
             }
         } catch (error) {
             console.error('Error fetching contacts:', error)
+            setHasMore(false)
         } finally {
-            if (pageNum === 1) setIsLoadingContacts(false)
+            setIsLoadingContacts(false)
         }
     }, [orgId])
 

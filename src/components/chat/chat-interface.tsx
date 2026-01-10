@@ -187,7 +187,7 @@ export function ChatInterface({
         })
 
         // 2. Polling fallback (since Realtime has connection issues)
-        // Refresh messages every 3 seconds
+        // Refresh messages every 1 second
         const pollInterval = setInterval(() => {
             getMessages(selectedContact.id).then(newMsgs => {
                 if (newMsgs && newMsgs.length > 0) {
@@ -200,7 +200,7 @@ export function ChatInterface({
                     })
                 }
             })
-        }, 3000)
+        }, 1000)
 
         return () => {
             clearInterval(pollInterval)
