@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
 import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact } from '@/app/dashboard/chat/actions'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -120,6 +120,9 @@ export function ChatInterface({
 
     // Handle Deep Linking to Chat
     const searchParams = useSearchParams()
+
+    const router = useRouter()
+    const pathname = usePathname()
     const chatId = searchParams.get('chatId')
 
     useEffect(() => {
@@ -346,7 +349,7 @@ export function ChatInterface({
     // Realtime Setup
     const supabase = createClient()
 
-    const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+
 
     useEffect(() => {
         if (!selectedContact?.id) return
@@ -433,7 +436,7 @@ export function ChatInterface({
         }, 3000) // Increased poll to 3s to reduce load further
 
         return () => {
-            supabase.removeChannel(channel)
+            clearInterval(pollInterval)
         }
     }, [selectedContact?.id, markAsRead, playNotificationSound]) // Only re-run if ID changes
 
@@ -601,6 +604,12 @@ export function ChatInterface({
         setShowGallery(true)
     }
 
+    const handleContactSelect = (contact: Contact) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('chatId', contact.id)
+        router.replace(`${pathname}?${params.toString()}`)
+    }
+
     return (
         <div className="flex h-full gap-0 rounded-2xl overflow-hidden glass animate-fade-in">
 
@@ -672,7 +681,7 @@ export function ChatInterface({
                     {(activeTab === 'mine' ? myChats : activeTab === 'awaiting' ? awaitingChats : activeTab === 'all' ? allChats : finishedChats)?.map((contact, index) => (
                         <button
                             key={contact.id}
-                            onClick={() => setSelectedContact(contact)}
+                            onClick={() => handleContactSelect(contact)}
                             className={cn(
                                 "w-full text-left p-4 hover:bg-muted/30 transition-all duration-200 border-b border-border/30 animate-fade-in",
                                 selectedContact?.id === contact.id ? "bg-primary/10 border-l-2 border-l-primary" : ""
