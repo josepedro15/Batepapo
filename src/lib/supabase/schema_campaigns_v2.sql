@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS public.campaign_recipients (
 ALTER TABLE public.campaign_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaign_recipients ENABLE ROW LEVEL SECURITY;
 
+-- DROP existing policies first (to allow re-running this script)
+DROP POLICY IF EXISTS "Read own campaign messages" ON campaign_messages;
+DROP POLICY IF EXISTS "Insert own campaign messages" ON campaign_messages;
+DROP POLICY IF EXISTS "Delete own campaign messages" ON campaign_messages;
+DROP POLICY IF EXISTS "Read own campaign recipients" ON campaign_recipients;
+DROP POLICY IF EXISTS "Insert own campaign recipients" ON campaign_recipients;
+DROP POLICY IF EXISTS "Update own campaign recipients" ON campaign_recipients;
+DROP POLICY IF EXISTS "Insert own campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Update own campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Delete own campaigns" ON campaigns;
+
 -- Policy para campaign_messages
 CREATE POLICY "Read own campaign messages" ON campaign_messages FOR SELECT USING (
     EXISTS (
