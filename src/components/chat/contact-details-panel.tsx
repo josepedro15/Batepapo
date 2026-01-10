@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle, ListTodo, FileText } from 'lucide-react'
+import { X, Tag, Plus, Clock, StickyNote, Calendar, CheckCircle2, Circle, AlertCircle, ListTodo, FileText, Brain, Sparkles, Copy, RefreshCw } from 'lucide-react'
 import { addTag, removeTag, addNote, getNotes, getReminders, createReminder, toggleReminder, getPipelines, updateContactStage, getContactDeal, updateDealValue } from '@/app/dashboard/chat/actions'
+import { generateAIResponse } from '@/app/dashboard/chat/ai-actions'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { getTags, createTag } from '@/app/dashboard/settings/actions'
 
-export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClose: () => void }) {
-    const [activeTab, setActiveTab] = useState<'info' | 'notes' | 'reminders'>('info')
+export function ContactDetailsPanel({ contact, messages, onClose }: { contact: any, messages?: any[], onClose: () => void }) {
+    const [activeTab, setActiveTab] = useState<'info' | 'notes' | 'reminders' | 'ai'>('info')
     const [loading, setLoading] = useState(false)
     const [notes, setNotes] = useState<any[]>([])
     const [reminders, setReminders] = useState<any[]>([])
@@ -25,6 +26,10 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
     const [selectedStageId, setSelectedStageId] = useState('')
     const [dealValue, setDealValue] = useState<string>('')
     const [isSavingValue, setIsSavingValue] = useState(false)
+
+    // AI State
+    const [aiSuggestion, setAiSuggestion] = useState('')
+    const [aiLoading, setAiLoading] = useState(false)
 
     // Fetch Initial Data
     useEffect(() => {
@@ -156,8 +161,35 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
         }
     }
 
+    async function handleGenerateAI() {
+        if (!messages || messages.length === 0) {
+            toast.error('Sem histórico de mensagens para analisar')
+            return
+        }
+
+        setAiLoading(true)
+        setAiSuggestion('')
+
+        try {
+            const result = await generateAIResponse(messages)
+
+            if (result.error) {
+                toast.error(result.error)
+            } else if (result.suggestion) {
+                setAiSuggestion(result.suggestion)
+                toast.success('Sugestão gerada!')
+            }
+        } catch (error) {
+            console.error(error)
+            toast.error('Erro ao gerar sugestão')
+        } finally {
+            setAiLoading(false)
+        }
+    }
+
     const tabs = [
         { id: 'info' as const, label: 'Geral', icon: Tag },
+        { id: 'ai' as const, label: 'IA Sales', icon: Brain },
         { id: 'notes' as const, label: 'Notas', icon: FileText },
         { id: 'reminders' as const, label: 'Tarefas', icon: ListTodo },
     ]
@@ -254,7 +286,7 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                                 Etiquetas disponíveis
                                             </div>
                                         )}
-                                        
+
                                         {availableTags
                                             .filter(t => {
                                                 // Filter out tags already on contact
@@ -290,14 +322,14 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                                 )
                                             })
                                         }
-                                        
+
                                         {/* Empty state when no tags match */}
                                         {availableTags.filter(t => !contact.tags?.includes(t.name) && (!newTag || t.name.toLowerCase().includes(newTag.toLowerCase()))).length === 0 && !newTag && (
                                             <div className="px-3 py-4 text-xs text-muted-foreground text-center">
                                                 Todas as etiquetas já estão aplicadas
                                             </div>
                                         )}
-                                        
+
                                         {/* Allow creating new tag on the fly */}
                                         {newTag && !availableTags.some(t => t.name.toLowerCase() === newTag.toLowerCase()) && (
                                             <button
@@ -375,8 +407,8 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                             {notes.length > 0 ? (
                                 <div className="space-y-2">
                                     {notes.slice(0, 3).map((note, index) => (
-                                        <div 
-                                            key={note.id} 
+                                        <div
+                                            key={note.id}
                                             className="bg-muted/20 p-3 rounded-lg border border-border/30 text-xs animate-fade-in"
                                             style={{ animationDelay: `${index * 50}ms` }}
                                         >
@@ -386,7 +418,7 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                                             </p>
                                         </div>
                                     ))}
-                                    
+
                                     {notes.length > 3 && (
                                         <button
                                             onClick={() => setActiveTab('notes')}
@@ -412,6 +444,87 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
                 )}
 
 
+                {/* --- TAB: AI SALES --- */}
+                {activeTab === 'ai' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 p-4 rounded-2xl border border-violet-500/20">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                                    <Sparkles className="h-5 w-5 text-white" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-foreground text-sm">IA Sales Assistant</h4>
+                                    <p className="text-[10px] text-muted-foreground">Analisa as últimas 30 mensagens</p>
+                                </div>
+                            </div>
+
+                            {!aiSuggestion ? (
+                                <div className="text-center py-6">
+                                    <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                                        Solicite uma sugestão de resposta inteligente baseada no contexto da conversa.
+                                    </p>
+                                    <button
+                                        onClick={handleGenerateAI}
+                                        disabled={aiLoading}
+                                        className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 py-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2 group"
+                                    >
+                                        {aiLoading ? (
+                                            <>
+                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                Analisando Conversa...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Brain className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                                                Gerar Sugestão
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 border border-violet-500/20 shadow-inner">
+                                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{aiSuggestion}</p>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(aiSuggestion)
+                                                toast.success('Copiado para área de transferência')
+                                            }}
+                                            className="flex-1 bg-background hover:bg-muted border border-border/50 text-foreground py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Copy className="h-3.5 w-3.5" />
+                                            Copiar
+                                        </button>
+                                        <button
+                                            onClick={handleGenerateAI}
+                                            disabled={aiLoading}
+                                            className="px-4 bg-muted hover:bg-muted/80 text-foreground rounded-xl transition-colors flex items-center justify-center"
+                                            title="Gerar Nova"
+                                        >
+                                            <RefreshCw className={cn("h-4 w-4", aiLoading && "animate-spin")} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-2">
+                            <h5 className="text-[10px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
+                                <AlertCircle className="h-3 w-3" /> Info
+                            </h5>
+                            <p className="text-[10px] text-muted-foreground leading-relaxed">
+                                • Limite de 40 solicitações por dia.<br />
+                                • A IA analisa apenas texto (imagens são ignoradas).<br />
+                                • Verifique a resposta antes de enviar.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+
                 {/* --- TAB: NOTES --- */}
                 {activeTab === 'notes' && (
                     <div className="space-y-4">
@@ -429,8 +542,8 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
 
                         <div className="space-y-3">
                             {notes.map((note, index) => (
-                                <div 
-                                    key={note.id} 
+                                <div
+                                    key={note.id}
                                     className="bg-muted/30 p-4 rounded-xl border border-border/50 text-sm animate-fade-in hover:border-primary/20 transition-all duration-200"
                                     style={{ animationDelay: `${index * 50}ms` }}
                                 >
@@ -477,12 +590,12 @@ export function ContactDetailsPanel({ contact, onClose }: { contact: any, onClos
 
                         <div className="space-y-2">
                             {reminders.map((rem, index) => (
-                                <div 
-                                    key={rem.id} 
+                                <div
+                                    key={rem.id}
                                     className={cn(
                                         "flex items-start gap-3 p-4 rounded-xl border transition-all duration-200 animate-fade-in",
-                                        rem.completed 
-                                            ? "bg-success/5 border-success/20 opacity-60" 
+                                        rem.completed
+                                            ? "bg-success/5 border-success/20 opacity-60"
                                             : "bg-muted/30 border-border/50 hover:border-warning/30"
                                     )}
                                     style={{ animationDelay: `${index * 50}ms` }}

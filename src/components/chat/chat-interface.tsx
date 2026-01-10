@@ -129,16 +129,16 @@ export function ChatInterface({
         if (!chatId) return
 
         const loadDeepLinkChat = async () => {
-             // 1. Try to find in existing lists
+            // 1. Try to find in existing lists
             const allLists = [
-                ...(myChats || []), 
-                ...(awaitingChats || []), 
-                ...(allChats || []), 
+                ...(myChats || []),
+                ...(awaitingChats || []),
+                ...(allChats || []),
                 ...(finishedChats || [])
             ]
-            
+
             const existing = allLists.find(c => c.id === chatId)
-            
+
             if (existing) {
                 setSelectedContact(existing)
                 // Switch to correct tab
@@ -170,10 +170,10 @@ export function ChatInterface({
         if (tabsRef.current) {
             const container = tabsRef.current
             const scrollAmount = 200
-            const newScrollLeft = direction === 'left' 
-                ? container.scrollLeft - scrollAmount 
+            const newScrollLeft = direction === 'left'
+                ? container.scrollLeft - scrollAmount
                 : container.scrollLeft + scrollAmount
-            
+
             container.scrollTo({
                 left: newScrollLeft,
                 behavior: 'smooth'
@@ -195,15 +195,15 @@ export function ChatInterface({
         if (scrollTop < 80 && hasMore && !isLoadingMessages) {
             setIsLoadingMessages(true)
             const currentScrollHeight = scrollHeight
-            
+
             const nextPage = page + 1
             const olderMessages = await getMessages(selectedContact!.id, nextPage, MESSAGES_PER_PAGE)
-            
+
             if (olderMessages && olderMessages.length > 0) {
                 setMessages(prev => [...olderMessages, ...prev])
                 setPage(nextPage)
                 setHasMore(olderMessages.length === MESSAGES_PER_PAGE)
-                
+
                 // Restore scroll position
                 requestAnimationFrame(() => {
                     if (e.currentTarget) {
@@ -348,8 +348,7 @@ export function ChatInterface({
 
     // Realtime Setup
     const supabase = createClient()
-
-
+    // const { toast } = useToast() <- Removing this as we use 'sonner' toast imported at top
 
     useEffect(() => {
         if (!selectedContact?.id) return
@@ -382,18 +381,18 @@ export function ChatInterface({
             // Check for new messages only (simplistic approach: fetch last page again and check end)
             // But with pagination this is tricky. We'll simplify: just check the last messages.
             // Actually, we need to poll the LATEST message to see if we should append.
-            
+
             // NOTE: For now, keeping original polling logic but fetching page 0 might check new messages if sorted desc?
             // Original logic fetched ALL. Now we fetch page 0 (latest 25).
             // If new message comes, it will be in page 0.
-            
+
             getMessages(contactId, 0, MESSAGES_PER_PAGE).then(latestMsgs => {
                 if (latestMsgs && latestMsgs.length > 0) {
                     setMessages(prev => {
                         // Compare the last message in current state with last in fetched
                         // This is tricky because `prev` might have 100 messages (loaded 4 pages)
                         // and `latestMsgs` has only 25.
-                        
+
                         // We only want to append NEW messages at the end.
                         const lastCurrent = prev[prev.length - 1]
                         const lastFetched = latestMsgs[latestMsgs.length - 1]
@@ -417,7 +416,7 @@ export function ChatInterface({
                                 // No, latestMsgs are the NEWEST 25.
                                 // If lastCurrent is NOT in latestMsgs, it might be that latestMsgs are ALL newer?
                                 // This polling logic needs to be robust. 
-                                
+
                                 // Alternative: Check if lastFetched is newer than lastCurrent.
                                 // If so, we can just append it?
                                 // Let's just append the very last one if it's different ID, ensuring no dupe?
@@ -643,7 +642,7 @@ export function ChatInterface({
                     </div>
 
                     {/* Scroll Container */}
-                    <div 
+                    <div
                         ref={tabsRef}
                         onScroll={checkScroll}
                         className="flex overflow-x-auto scrollbar-hide scroll-smooth relative"
@@ -845,7 +844,7 @@ export function ChatInterface({
                         </div>
 
                         {/* Messages Area */}
-                        <div 
+                        <div
                             className="flex-1 p-6 overflow-y-auto space-y-4"
                             onScroll={handleScroll}
                         >
@@ -1071,7 +1070,7 @@ export function ChatInterface({
 
             {/* RIGHT SIDEBAR DETAILS (Optional/Toggleable) */}
             {selectedContact && showDetailsPanel && (
-                <ContactDetailsPanel contact={selectedContact} onClose={() => setShowDetailsPanel(false)} />
+                <ContactDetailsPanel contact={selectedContact} messages={messages} onClose={() => setShowDetailsPanel(false)} />
             )}
 
             {/* Transfer Dialog */}
@@ -1089,8 +1088,10 @@ export function ChatInterface({
                 open={showNewChatDialog}
                 onClose={() => setShowNewChatDialog(false)}
                 onChatCreated={(contactId) => {
-                    // Refresh page to show new contact
-                    window.location.reload()
+                    // Refresh server data to show new contact using Next.js router
+                    router.refresh()
+                    // Optionally set selected contact immediately if we can
+                    // setSelectedContact({ id: contactId, ... }) - complex because we need full object
                 }}
                 orgId={orgId}
 

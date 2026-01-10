@@ -228,6 +228,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                             <>
                                 {contacts.map((contact) => (
                                     <button
+                                        type="button"
                                         key={contact.id}
                                         onClick={() => handleContactSelect(contact)}
                                         disabled={isLoading}

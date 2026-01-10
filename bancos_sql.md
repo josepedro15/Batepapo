@@ -239,3 +239,13 @@ CREATE TABLE public.whatsapp_instances (
   CONSTRAINT whatsapp_instances_pkey PRIMARY KEY (id),
   CONSTRAINT whatsapp_instances_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
+CREATE TABLE public.ai_usage_logs (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT ai_usage_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_usage_logs_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
+  CONSTRAINT ai_usage_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE INDEX ai_usage_logs_org_date_idx ON public.ai_usage_logs (organization_id, created_at);
