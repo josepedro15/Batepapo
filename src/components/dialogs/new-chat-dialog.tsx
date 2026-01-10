@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, MessageSquarePlus, Loader2, Search, User, Phone } from 'lucide-react'
 import { toast } from 'sonner'
 import { useInView } from 'react-intersection-observer'
@@ -31,6 +31,12 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
     const [page, setPage] = useState(1)
     const [hasMore, setHasMore] = useState(true)
     const { ref, inView } = useInView()
+    const contactsRef = useRef<WhatsAppContact[]>([]) // Ref to access current contacts in async function
+
+    // Keep ref in sync with state
+    useEffect(() => {
+        contactsRef.current = contacts
+    }, [contacts])
 
     const fetchContacts = useCallback(async (pageNum: number, searchTerm: string, reset: boolean = false) => {
         try {
@@ -49,16 +55,26 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             const data = await response.json()
 
             if (response.ok) {
-                setContacts(prev => {
-                    if (reset) return data.contacts
-
-                    // Deduplicate
+                if (reset) {
+                    setContacts(data.contacts)
+                    setHasMore(data.contacts.length === 20)
+                } else {
+                    const currentContacts = contactsRef.current
                     const newContacts = data.contacts.filter((newC: WhatsAppContact) =>
-                        !prev.some(existing => existing.id === newC.id)
+                        !currentContacts.some(existing => existing.id === newC.id)
                     )
-                    return [...prev, ...newContacts]
-                })
-                setHasMore(data.contacts.length === 20) // Assuming pageSize is 20
+
+                    // If we received data but everything was a duplicate, stop pagination
+                    // This prevents infinite loops if the server pagination is inconsistent
+                    if (data.contacts.length > 0 && newContacts.length === 0) {
+                        console.warn('Received duplicates loop detected, stopping pagination')
+                        setHasMore(false)
+                    } else {
+                        setHasMore(data.contacts.length === 20)
+                    }
+
+                    setContacts(prev => [...prev, ...newContacts])
+                }
             } else {
                 const errorData = await response.json().catch(() => ({}))
                 console.error('Contact fetch error:', errorData)
