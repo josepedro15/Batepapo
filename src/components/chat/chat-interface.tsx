@@ -3,17 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-<<<<<<< HEAD
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar } from '@/app/dashboard/chat/actions'
-=======
-import { assignChat, sendMessage, finishChat, reopenChat, syncProfilePictures, sendMedia, refreshContactAvatar } from '@/app/dashboard/chat/actions'
-
-// ... existing code ...
-
-
-
-// Automatic Sync on Mount (once)
->>>>>>> 4ea3786 (perf: otimiza busca de mensagens para cliente (supabase direto))
+import { assignChat, sendMessage, finishChat, reopenChat, syncProfilePictures, sendMedia, refreshContactAvatar, getChatData } from '@/app/dashboard/chat/actions'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
@@ -242,13 +232,16 @@ export function ChatInterface({
     // Realtime Setup
     const supabase = createClient()
 
+    const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+
     useEffect(() => {
         if (!selectedContact) return
 
         // Mark as read when selecting a contact
         markAsRead()
-        // Clear messages immediately to avoid showing previous chat
-        setMessages([])
+
+        setIsLoadingMessages(true)
+        setMessages([]) // Clear to avoid showing old chat
 
         const fetchMessages = async () => {
             const { data, error } = await supabase
@@ -260,35 +253,43 @@ export function ChatInterface({
             if (!error && data) {
                 setMessages(data)
             }
+            setIsLoadingMessages(false)
         }
 
         // 1. Initial Load
         fetchMessages()
 
-        // 2. Polling fallback (since Realtime has connection issues)
-        // Refresh messages every 1 second
-        const pollInterval = setInterval(async () => {
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('contact_id', selectedContact.id)
-                .order('created_at', { ascending: true })
-
-            if (!error && data && data.length > 0) {
+        // 2. Realtime Subscription
+        const channel = supabase
+            .channel(`chat:${selectedContact.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages',
+                filter: `contact_id=eq.${selectedContact.id}`
+            }, (payload) => {
+                const newMessage = payload.new as Message
                 setMessages(prev => {
-                    // Only update if there are new messages
-                    if (data.length !== prev.length) {
-                        return data
-                    }
-                    return prev
+                    // Avoid duplicates
+                    if (prev.some(m => m.id === newMessage.id)) return prev
+                    return [...prev, newMessage]
                 })
-            }
-        }, 1000)
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'messages',
+                filter: `contact_id=eq.${selectedContact.id}`
+            }, (payload) => {
+                const updatedMessage = payload.new as Message
+                setMessages(prev => prev.map(m => m.id === updatedMessage.id ? updatedMessage : m))
+            })
+            .subscribe()
 
         return () => {
-            clearInterval(pollInterval)
+            supabase.removeChannel(channel)
         }
-    }, [selectedContact, markAsRead, playNotificationSound])
+    }, [selectedContact?.id])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
@@ -656,7 +657,11 @@ export function ChatInterface({
 
                         {/* Messages Area */}
                         <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                            {groupedMessages.length === 0 ? (
+                            {isLoadingMessages && messages.length === 0 ? (
+                                <div className="flex h-full items-center justify-center">
+                                    <MessageSquare className="h-8 w-8 animate-pulse text-primary/50" />
+                                </div>
+                            ) : groupedMessages.length === 0 ? (
                                 <div className="flex h-full items-center justify-center flex-col text-muted-foreground gap-3">
                                     <div className="h-20 w-20 rounded-2xl bg-muted/30 flex items-center justify-center">
                                         <MessageCircle className="h-10 w-10 opacity-30" />
