@@ -61,26 +61,36 @@ export async function generateAIResponse(messages: Message[]) {
 
     // 4. Prepare Messages for OpenAI
     // Take last 30 messages
-    const recentMessages = messages.slice(0, 30).reverse() // Assuming input 'messages' is sorted desc (newest first). We reverse to chronological order.
+    const recentMessages = messages.slice(-30) // Take the LAST 30 messages (oldest to newest for chronological order)
+
+    console.log('[AI Debug] Total messages received:', messages.length)
+    console.log('[AI Debug] Recent messages to process:', recentMessages.length)
+    console.log('[AI Debug] Messages sample:', recentMessages.slice(0, 3).map(m => ({
+        sender_type: m.sender_type,
+        body: m.body?.substring(0, 50),
+        media_type: m.media_type
+    })))
 
     // If input messages are empty
     if (recentMessages.length === 0) {
         return { error: 'Não há histórico suficiente para gerar uma resposta.' }
     }
 
-    const formattedMessages = recentMessages.map(msg => ({
-        role: msg.sender_type === 'user' ? 'assistant' : 'user', // 'user' in DB is the agent (us). 'contact' is the customer (user from OpenAI perspective?). 
-        // Wait.
-        // In CRM: 'user' = The sales agent (me/us). 'contact' = The customer.
-        // OpenAI Prompting: We want the AI to act as the Sales Agent.
-        // So 'contact' messages are 'user' role (inputs to AI).
-        // 'user' messages (previous agent replies) are 'assistant' role (history of AI/Agent).
-        // Correct mapping:
-        // sender_type 'contact' -> role 'user'
-        // sender_type 'user' -> role 'assistant'
-        // sender_type 'system' -> role 'system' (or ignore)
-        content: msg.body || (msg.media_type ? `[${msg.media_type}]` : '')
-    })).filter(m => m.content)
+    // Filter out system messages and map to OpenAI format
+    // In CRM: 'user' = The sales agent (me/us). 'contact' = The customer.
+    // OpenAI: We want the AI to act as the Sales Agent.
+    // So 'contact' messages are 'user' role (inputs to AI).
+    // 'user' messages (previous agent replies) are 'assistant' role (history of AI/Agent).
+    const formattedMessages = recentMessages
+        .filter(msg => msg.sender_type !== 'system') // Ignore system messages
+        .map(msg => ({
+            role: msg.sender_type === 'user' ? 'assistant' as const : 'user' as const,
+            content: msg.body || (msg.media_type ? `[Mídia: ${msg.media_type}]` : '')
+        }))
+        .filter(m => m.content) // Remove messages with empty content
+
+    console.log('[AI Debug] Formatted messages count:', formattedMessages.length)
+    console.log('[AI Debug] Formatted messages:', formattedMessages)
 
     // Add system prompt
     const defaultPrompt = `Você é um assistente de vendas experiente e prestativo. Seu objetivo é ajudar o atendente a responder o cliente da melhor forma possível, visando fechar vendas ou resolver dúvidas com clareza e empatia.
