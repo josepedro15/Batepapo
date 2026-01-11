@@ -174,32 +174,51 @@ export async function createCampaign(input: CreateCampaignInput) {
         )
 
         console.log('[Campaign] Sending to UAZAPI:', uazapiMessages.length, 'messages')
+        console.log('[Campaign] First message sample:', JSON.stringify(uazapiMessages[0], null, 2))
 
         const scheduledMinutes = input.scheduledFor
             ? Math.max(1, Math.round((input.scheduledFor.getTime() - Date.now()) / 60000))
             : 1
 
-        const uazapiResponse = await createMassCampaign(instanceToken, {
-            delayMin: input.delayMin || 3,
-            delayMax: input.delayMax || 6,
-            info: input.name,
-            scheduledFor: scheduledMinutes,
-            messages: uazapiMessages
-        })
-
-        console.log('[Campaign] UAZAPI response:', uazapiResponse)
-
-        // 6. Update campaign with UAZAPI folder_id
-        const { error: updateError } = await supabase
-            .from('campaigns')
-            .update({
-                uazapi_folder_id: uazapiResponse.folder_id,
-                status: uazapiResponse.status || 'sending'
+        try {
+            const uazapiResponse = await createMassCampaign(instanceToken, {
+                delayMin: input.delayMin || 3,
+                delayMax: input.delayMax || 6,
+                info: input.name,
+                scheduledFor: scheduledMinutes,
+                messages: uazapiMessages
             })
-            .eq('id', campaign.id)
 
-        if (updateError) {
-            console.error('[Campaign] Error updating campaign:', updateError)
+            console.log('[Campaign] UAZAPI response:', JSON.stringify(uazapiResponse, null, 2))
+
+            // 6. Update campaign with UAZAPI folder_id - ALWAYS set to sending on success
+            const { error: updateError } = await supabase
+                .from('campaigns')
+                .update({
+                    uazapi_folder_id: uazapiResponse.folder_id || 'unknown',
+                    status: 'sending' // Always set to sending on success
+                })
+                .eq('id', campaign.id)
+
+            if (updateError) {
+                console.error('[Campaign] Error updating campaign:', updateError)
+            } else {
+                console.log('[Campaign] Successfully updated campaign status to sending')
+            }
+        } catch (uazapiError) {
+            console.error('[Campaign] UAZAPI error:', uazapiError)
+            // Update campaign to show error
+            await supabase
+                .from('campaigns')
+                .update({
+                    status: 'draft' // Keep as draft if UAZAPI fails
+                })
+                .eq('id', campaign.id)
+
+            return {
+                success: false,
+                error: 'Erro ao enviar para UAZAPI: ' + (uazapiError instanceof Error ? uazapiError.message : 'Erro desconhecido')
+            }
         }
 
         revalidatePath('/dashboard/campaigns')
