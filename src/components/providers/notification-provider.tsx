@@ -8,6 +8,7 @@ interface NotificationContextType {
     playNotificationSound: () => void
     refreshUnreadCount: () => Promise<void>
     markAsRead: () => void
+    setIsChatVisible: (visible: boolean) => void
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
@@ -27,6 +28,7 @@ interface NotificationProviderProps {
 export function NotificationProvider({ children }: NotificationProviderProps) {
     const [unreadCount, setUnreadCount] = useState(0)
     const audioContextRef = useRef<AudioContext | null>(null)
+    const isChatVisibleRef = useRef(false) // Track if user is viewing chat screen
 
     // Initialize audio context on first user interaction
     const initAudioContext = useCallback(() => {
@@ -64,12 +66,17 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         }
     }, [initAudioContext])
 
+    // Set chat visibility (called by chat-interface when mounting/unmounting)
+    const setIsChatVisible = useCallback((visible: boolean) => {
+        isChatVisibleRef.current = visible
+    }, [])
+
     const refreshUnreadCount = useCallback(async () => {
         try {
             const count = await getUnreadMessageCount()
             setUnreadCount(prev => {
-                // If count increased, play sound
-                if (count > prev && prev >= 0) {
+                // If count increased AND user is NOT viewing chat, play sound
+                if (count > prev && prev >= 0 && !isChatVisibleRef.current) {
                     playNotificationSound()
                 }
                 return count
@@ -100,7 +107,8 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
             unreadCount,
             playNotificationSound,
             refreshUnreadCount,
-            markAsRead
+            markAsRead,
+            setIsChatVisible
         }}>
             {children}
         </NotificationContext.Provider>

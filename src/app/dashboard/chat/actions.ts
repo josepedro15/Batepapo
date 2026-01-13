@@ -59,14 +59,15 @@ export async function getChatData() {
 
         const contactIds = contacts.map(c => c.id)
 
-        // Fetch all messages for these contacts to:
-        // 1. Get last message (most recent)
-        // 2. Count unread messages (from contacts, not viewed)
+        // Fetch recent messages for these contacts (limited per contact for performance)
+        // We fetch last 5 messages per contact to determine last_message and unread_count
+        // This is more efficient than fetching ALL messages
         const { data: messages } = await supabase
             .from('messages')
             .select('contact_id, body, sender_type, media_type, created_at')
             .in('contact_id', contactIds)
             .order('created_at', { ascending: false })
+            .limit(contactIds.length * 5) // Limit to ~5 messages per contact
 
         // Build maps for last message and unread count
         const lastMessageMap = new Map<string, {
@@ -187,6 +188,21 @@ export async function getMessages(contactId: string, page: number = 0, limit: nu
     return data?.reverse() || []
 }
 
+// New optimized function for polling - fetches only messages after a given timestamp
+export async function getNewMessages(contactId: string, afterTimestamp: string) {
+    const supabase = await createClient()
+
+    const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('contact_id', contactId)
+        .gt('created_at', afterTimestamp) // Only get messages after this timestamp
+        .order('created_at', { ascending: true }) // Already in chronological order
+        .limit(50) // Safety limit
+
+    return data || []
+}
+
 import * as uazapi from '@/lib/uazapi'
 
 export async function sendMessage(contactId: string, body: string, orgId: string) {
@@ -255,8 +271,7 @@ export async function sendMessage(contactId: string, body: string, orgId: string
 
         // We don't throw error to UI to avoid crash, but UI will show failed status via Realtime/Refetch if implemented
     }
-
-    revalidatePath('/dashboard/chat')
+    // Note: Removed duplicate revalidatePath - first call on line 218 is sufficient for optimistic UI
 }
 
 export async function sendMedia(contactId: string, formData: FormData, orgId: string) {

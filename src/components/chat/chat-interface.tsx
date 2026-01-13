@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, getNewMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact } from '@/app/dashboard/chat/actions'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -100,7 +100,10 @@ export function ChatInterface({
     const recorderRef = useRef<MicRecorder | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const messagesContainerRef = useRef<HTMLDivElement>(null) // Container for scroll control
+    const messagesRef = useRef<Message[]>([]) // Ref to track current messages for polling
     const tabsRef = useRef<HTMLDivElement>(null)
+    const shouldScrollToBottomRef = useRef(true) // Flag to control auto-scroll
     const [canScrollLeft, setCanScrollLeft] = useState(false)
     const [canScrollRight, setCanScrollRight] = useState(false)
 
@@ -184,11 +187,16 @@ export function ChatInterface({
     }
 
     // Notification context
-    const { markAsRead, playNotificationSound } = useNotification()
+    const { markAsRead, setIsChatVisible } = useNotification()
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTo({
+                top: messagesContainerRef.current.scrollHeight,
+                behavior
+            })
+        }
+    }, [])
 
     const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight } = e.currentTarget
@@ -310,20 +318,28 @@ export function ChatInterface({
     }
 
 
-    // Scroll of new messages
+    // Scroll to bottom when messages change (controlled by flag)
     useEffect(() => {
-        // Only scroll to bottom if loading the first page or receiving new message at the bottom
-        if (page === 0) {
-            scrollToBottom()
+        if (shouldScrollToBottomRef.current && messages.length > 0) {
+            // Small delay to ensure DOM is updated
+            requestAnimationFrame(() => {
+                scrollToBottom('instant')
+            })
         }
-    }, [messages, page])
+    }, [messages, scrollToBottom])
 
-    // Mark as read on mount (user is viewing chat page)
+    // Mark as read and set chat as visible on mount
     useEffect(() => {
         markAsRead()
-    }, [])
+        setIsChatVisible(true)
+        
+        // Clean up: mark chat as not visible when leaving
+        return () => {
+            setIsChatVisible(false)
+        }
+    }, [markAsRead, setIsChatVisible])
 
-    // Poll contact list every 5 seconds for real-time updates
+    // Poll contact list every 10 seconds for real-time updates (increased from 5s for performance)
     useEffect(() => {
         const refreshContacts = async () => {
             try {
@@ -340,8 +356,8 @@ export function ChatInterface({
         // Initial sync
         refreshContacts()
 
-        // Poll every 5 seconds
-        const pollInterval = setInterval(refreshContacts, 5000)
+        // Poll every 10 seconds (optimized from 5s)
+        const pollInterval = setInterval(refreshContacts, 10000)
 
         return () => clearInterval(pollInterval)
     }, [])
@@ -365,79 +381,94 @@ export function ChatInterface({
 
         // Start loading state
         setIsLoadingMessages(true)
+        // Enable auto-scroll when opening a new conversation
+        shouldScrollToBottomRef.current = true
 
         // 1. Load initial history
         getMessages(contactId, 0, MESSAGES_PER_PAGE).then(msgs => {
             setMessages(msgs || [])
             setHasMore((msgs?.length || 0) === MESSAGES_PER_PAGE)
             setIsLoadingMessages(false)
+            // Scroll after messages load
+            requestAnimationFrame(() => {
+                scrollToBottom('instant')
+            })
         }).catch(() => {
             setIsLoadingMessages(false)
         })
 
-        // 2. Polling fallback (since Realtime has connection issues)
-        // Refresh messages every 1 second
-        const pollInterval = setInterval(() => {
-            // Check for new messages only (simplistic approach: fetch last page again and check end)
-            // But with pagination this is tricky. We'll simplify: just check the last messages.
-            // Actually, we need to poll the LATEST message to see if we should append.
+        // 2. OPTIMIZED Polling: Only fetch NEW messages (incremental)
+        const pollInterval = setInterval(async () => {
+            // Use ref to get current messages (avoids stale closure)
+            const currentMessages = messagesRef.current
+            const lastMessage = currentMessages[currentMessages.length - 1]
+            if (!lastMessage) return
 
-            // NOTE: For now, keeping original polling logic but fetching page 0 might check new messages if sorted desc?
-            // Original logic fetched ALL. Now we fetch page 0 (latest 25).
-            // If new message comes, it will be in page 0.
-
-            getMessages(contactId, 0, MESSAGES_PER_PAGE).then(latestMsgs => {
-                if (latestMsgs && latestMsgs.length > 0) {
+            try {
+                // Only fetch messages after the last known timestamp
+                const newMessages = await getNewMessages(contactId, lastMessage.created_at)
+                
+                if (newMessages && newMessages.length > 0) {
+                    // Use setMessages with callback to get fresh state and avoid duplicates
                     setMessages(prev => {
-                        // Compare the last message in current state with last in fetched
-                        // This is tricky because `prev` might have 100 messages (loaded 4 pages)
-                        // and `latestMsgs` has only 25.
-
-                        // We only want to append NEW messages at the end.
-                        const lastCurrent = prev[prev.length - 1]
-                        const lastFetched = latestMsgs[latestMsgs.length - 1]
-
-                        if (!lastCurrent || !lastFetched) return prev
-
-                        if (lastFetched.id !== lastCurrent.id) {
-                            // There are new messages!
-                            // Find which ones are new.
-                            // Simple way: Find lastCurrent in latestMsgs
-                            const index = latestMsgs.findIndex(m => m.id === lastCurrent.id)
-                            if (index !== -1 && index < latestMsgs.length - 1) {
-                                const newOnes = latestMsgs.slice(index + 1)
-                                playNotificationSound()
-                                return [...prev, ...newOnes]
-                            } else if (index === -1) {
-                                // Maybe many new messages, just replace/refetch or append all?
-                                // If gap, might be issue. For now let's assume valid flow.
-                                // Or maybe the current list is empty?
-                                // If index -1, it means the lastCurrent is OLDER than the oldest in latest-25 page?
-                                // No, latestMsgs are the NEWEST 25.
-                                // If lastCurrent is NOT in latestMsgs, it might be that latestMsgs are ALL newer?
-                                // This polling logic needs to be robust. 
-
-                                // Alternative: Check if lastFetched is newer than lastCurrent.
-                                // If so, we can just append it?
-                                // Let's just append the very last one if it's different ID, ensuring no dupe?
-                                // Safer: Filter latestMsgs for ones with created_at > lastCurrent.created_at
-                                const newOnes = latestMsgs.filter(m => new Date(m.created_at) > new Date(lastCurrent.created_at))
-                                if (newOnes.length > 0) {
-                                    playNotificationSound()
-                                    return [...prev, ...newOnes]
+                        // Check for optimistic messages (temp-*) that should be replaced
+                        const tempMessages = prev.filter(m => m.id.startsWith('temp-'))
+                        const realMessages = prev.filter(m => !m.id.startsWith('temp-'))
+                        
+                        const existingIds = new Set(realMessages.map(m => m.id))
+                        const trulyNew = newMessages.filter((m: Message) => !existingIds.has(m.id))
+                        
+                        if (trulyNew.length > 0) {
+                            // For each new message, check if it matches an optimistic message (same body)
+                            // and replace it, or add it as new
+                            let updatedMessages = [...realMessages]
+                            
+                            for (const newMsg of trulyNew) {
+                                // Find matching optimistic message by body and sender_type
+                                const matchingOptimistic = tempMessages.find(
+                                    t => t.body === newMsg.body && t.sender_type === newMsg.sender_type
+                                )
+                                
+                                if (matchingOptimistic) {
+                                    // This is our optimistic message confirmed - already in list, just skip
+                                    // (the optimistic was filtered out, so we add the real one)
+                                    updatedMessages.push(newMsg)
+                                } else {
+                                    // Truly new message from contact
+                                    // Note: No notification sound here - user is viewing the chat screen
+                                    updatedMessages.push(newMsg)
                                 }
                             }
+                            
+                            // Sort by created_at to maintain order
+                            updatedMessages.sort((a, b) => 
+                                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                            )
+                            
+                            // Scroll to bottom when new messages arrive
+                            requestAnimationFrame(() => {
+                                scrollToBottom('smooth')
+                            })
+                            
+                            return updatedMessages
                         }
                         return prev
                     })
                 }
-            })
-        }, 3000) // Increased poll to 3s to reduce load further
+            } catch (error) {
+                console.error('Error polling new messages:', error)
+            }
+        }, 5000) // Increased to 5s (from 3s) with incremental fetching it's much lighter
 
         return () => {
             clearInterval(pollInterval)
         }
-    }, [selectedContact?.id, markAsRead, playNotificationSound]) // Only re-run if ID changes
+    }, [selectedContact?.id, markAsRead, scrollToBottom]) // Only re-run if ID changes
+
+    // Keep messagesRef in sync with messages state
+    useEffect(() => {
+        messagesRef.current = messages
+    }, [messages])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
@@ -497,30 +528,8 @@ export function ChatInterface({
         }
     }
 
-    // Automatic Sync on Mount (once)
-    useEffect(() => {
-        // Run sync after a short delay to let initial chats load
-        const timer = setTimeout(async () => {
-            console.log('🔄 Starting auto-sync of profile pictures...')
-            try {
-                const result = await syncProfilePictures()
-                console.log('✅ Sync result:', result)
-                if (result.success) {
-                    console.log(`📸 Updated ${result.updatedCount} profile pictures`)
-                    if (result.logs && result.logs.length > 0) {
-                        console.groupCollapsed('📝 Sync Details')
-                        console.log(result.logs.join('\n'))
-                        console.groupEnd()
-                    }
-                } else {
-                    console.warn('⚠️ Sync failed:', result.error)
-                }
-            } catch (err) {
-                console.error('❌ Error calling syncProfilePictures:', err)
-            }
-        }, 2000)
-        return () => clearTimeout(timer)
-    }, [])
+    // Note: Auto-sync of profile pictures has been REMOVED for performance.
+    // Use the manual "Sync Photos" button in the menu if needed.
 
     const getOriginalTab = (contactId: string) => {
         if (myChats?.find(c => c.id === contactId)) return 'mine'
@@ -845,6 +854,7 @@ export function ChatInterface({
 
                         {/* Messages Area */}
                         <div
+                            ref={messagesContainerRef}
                             className="flex-1 p-6 overflow-y-auto space-y-4"
                             onScroll={handleScroll}
                         >
@@ -950,7 +960,28 @@ export function ChatInterface({
                                         } else if (inputText.trim()) {
                                             const messageBody = inputText
                                             setInputText('')
-                                            await sendMessage(selectedContact.id, messageBody, orgId)
+                                            
+                                            // OPTIMISTIC UI: Add message to list immediately
+                                            const optimisticMessage: Message = {
+                                                id: `temp-${Date.now()}`, // Temporary ID
+                                                body: messageBody,
+                                                sender_type: 'user',
+                                                created_at: new Date().toISOString(),
+                                                media_url: null,
+                                                media_type: null
+                                            }
+                                            setMessages(prev => [...prev, optimisticMessage])
+                                            // Scroll to bottom after sending message
+                                            requestAnimationFrame(() => {
+                                                scrollToBottom('smooth')
+                                            })
+                                            
+                                            // Send in background (don't await to not block UI)
+                                            sendMessage(selectedContact.id, messageBody, orgId).catch(() => {
+                                                // On failure, could mark message as failed or remove it
+                                                // For now, the polling will eventually sync the real state
+                                                toast.error('Erro ao enviar mensagem')
+                                            })
                                         }
                                     }}
                                 >
