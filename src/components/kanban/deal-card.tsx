@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { MoreHorizontal, Pencil, Trash2, MessageCircle } from 'lucide-react'
+import { MoreHorizontal, Pencil, Trash2, MessageCircle, ChevronDown, Phone, DollarSign, TrendingUp } from 'lucide-react'
 import { useState } from 'react'
 import Link from 'next/link'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -21,6 +21,7 @@ export function DealCard({ deal, isOverlay }: { deal: any, isOverlay?: boolean }
     }
 
     const [editOpen, setEditOpen] = useState(false)
+    const [isExpanded, setIsExpanded] = useState(false)
 
     async function handleDelete(e: React.MouseEvent) {
         e.stopPropagation()
@@ -94,11 +95,62 @@ export function DealCard({ deal, isOverlay }: { deal: any, isOverlay?: boolean }
                     </span>
                 )}
 
-                <div className="flex items-center gap-2.5 text-xs text-muted-foreground border-t border-border/50 pt-3">
-                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-[10px] font-bold text-primary-foreground shrink-0 shadow-sm">
-                        {deal.contacts?.name?.charAt(0)?.toUpperCase() || '?'}
+                <div className="border-t border-border/50 pt-3">
+                    <div 
+                        className="flex items-center gap-2.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={() => setIsExpanded(!isExpanded)}
+                    >
+                        <div className="h-6 w-6 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-[10px] font-bold text-primary-foreground shrink-0 shadow-sm">
+                            {deal.contacts?.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <span className="truncate max-w-[120px] font-medium">{deal.contacts?.name}</span>
+                        <ChevronDown 
+                            className={cn(
+                                "h-4 w-4 ml-auto transition-transform duration-200",
+                                isExpanded && "rotate-180"
+                            )} 
+                        />
                     </div>
-                    <span className="truncate max-w-[140px] font-medium">{deal.contacts?.name}</span>
+                    
+                    {/* Expandable Details */}
+                    <div className={cn(
+                        "overflow-hidden transition-all duration-200 ease-out",
+                        isExpanded ? "max-h-40 opacity-100 mt-3" : "max-h-0 opacity-0"
+                    )}>
+                        <div className="space-y-2 pl-8 text-xs">
+                            {/* Phone */}
+                            {deal.contacts?.phone && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Phone className="h-3.5 w-3.5" />
+                                    <span>{deal.contacts.phone}</span>
+                                </div>
+                            )}
+                            
+                            {/* Status */}
+                            {deal.status && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                    <TrendingUp className="h-3.5 w-3.5" />
+                                    <span className={cn(
+                                        "px-2 py-0.5 rounded-md text-[10px] font-medium",
+                                        deal.status === 'open' && "bg-blue-500/10 text-blue-500",
+                                        deal.status === 'won' && "bg-green-500/10 text-green-500",
+                                        deal.status === 'lost' && "bg-red-500/10 text-red-500"
+                                    )}>
+                                        {deal.status === 'open' ? 'Em aberto' : deal.status === 'won' ? 'Ganho' : deal.status === 'lost' ? 'Perdido' : deal.status}
+                                    </span>
+                                </div>
+                            )}
+                            
+                            {/* Deal Value */}
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <DollarSign className="h-3.5 w-3.5" />
+                                <span className="font-medium text-foreground">
+                                    R$ {(deal.value || 0).toLocaleString('pt-BR')}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

@@ -679,3 +679,104 @@ export function buildCampaignMessages(
 
     return messages
 }
+
+/**
+ * Get campaign status/progress from UAZAPI
+ * GET /sender/listfolders - Lists all campaigns with their status
+ * Returns the current status of a campaign including sent/failed counts
+ * 
+ * Response fields:
+ * - id: campaign folder_id
+ * - info: campaign name/description
+ * - status: 'scheduled' | 'sending' | 'paused' | 'done' | 'deleting'
+ * - log_total: total messages in campaign
+ * - log_sucess: successfully sent messages (note: typo in API)
+ * - log_failed: failed messages
+ */
+export interface CampaignStatusInfo {
+    folder_id: string
+    info: string
+    status: 'scheduled' | 'sending' | 'paused' | 'done' | 'deleting'
+    total_messages: number
+    sent_count: number
+    failed_count: number
+    pending_count: number
+}
+
+/**
+ * List all campaigns (folders) with their status
+ * GET /sender/listfolders
+ */
+export async function listCampaignFolders(
+    instanceToken: string,
+    statusFilter?: 'scheduled' | 'sending' | 'paused' | 'done'
+): Promise<CampaignStatusInfo[]> {
+    try {
+        let url = `${UAZAPI_BASE_URL}/sender/listfolders`
+        if (statusFilter) {
+            url += `?status=${statusFilter}`
+        }
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'token': instanceToken
+            }
+        })
+
+        if (!response.ok) {
+            const error = await response.text()
+            console.error('UAZAPI listCampaignFolders error:', error)
+            return []
+        }
+
+        const data = await response.json()
+
+        // Data is an array of campaign folders
+        const folders = Array.isArray(data) ? data : (data.folders || data.items || [])
+
+        return folders.map((folder: any) => {
+            const total = folder.log_total || 0
+            const sent = folder.log_sucess || folder.log_success || 0 // UAZAPI has typo "sucess"
+            const failed = folder.log_failed || 0
+
+            return {
+                folder_id: folder.id || folder.folder_id,
+                info: folder.info || '',
+                status: folder.status || 'scheduled',
+                total_messages: total,
+                sent_count: sent,
+                failed_count: failed,
+                pending_count: Math.max(0, total - sent - failed)
+            }
+        })
+    } catch (error) {
+        console.error('Error listing campaign folders:', error)
+        return []
+    }
+}
+
+/**
+ * Get a specific campaign's status by folder_id
+ */
+export async function getCampaignStatus(
+    instanceToken: string,
+    folderId: string
+): Promise<CampaignStatusInfo | null> {
+    try {
+        const folders = await listCampaignFolders(instanceToken)
+
+        // Find the specific campaign
+        const campaign = folders.find(f => f.folder_id === folderId)
+
+        if (!campaign) {
+            console.log(`[UAZAPI] Campaign not found in listfolders: ${folderId}`)
+            return null
+        }
+
+        return campaign
+    } catch (error) {
+        console.error('Error getting campaign status:', error)
+        return null
+    }
+}

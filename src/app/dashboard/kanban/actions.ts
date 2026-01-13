@@ -53,7 +53,7 @@ export async function getKanbanData(selectedPipelineId?: string) {
     // Fetch stages for the selected pipeline
     const { data: stages, error: stagesError } = await supabase
         .from('stages')
-        .select('*, deals(*, contacts(name))')
+        .select('*, deals(*, contacts(name, phone))')
         .eq('pipeline_id', pipeline.id)
         .order('position')
 

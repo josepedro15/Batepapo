@@ -2,12 +2,67 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import {
     createMassCampaign,
     controlCampaign,
     buildCampaignMessages,
+    getCampaignStatus,
     type MassCampaignMessage
 } from '@/lib/uazapi'
+
+// Zod validation schemas
+const messageSchema = z.object({
+    type: z.enum(['text', 'button', 'list', 'document', 'carousel']),
+    text: z.string().optional(),
+    file: z.string().optional(),
+    docName: z.string().optional(),
+    footerText: z.string().optional(),
+    imageButton: z.string().optional(),
+    listButton: z.string().optional(),
+    choices: z.array(z.string()).optional()
+}).refine(
+    (msg) => {
+        // Text message must have text
+        if (msg.type === 'text') {
+            return !!msg.text && msg.text.trim().length > 0
+        }
+        // Document must have file
+        if (msg.type === 'document') {
+            return !!msg.file
+        }
+        // Button/List need text at minimum
+        if (msg.type === 'button' || msg.type === 'list') {
+            return !!msg.text && msg.text.trim().length > 0
+        }
+        return true
+    },
+    { message: 'Mensagem inválida: verifique se todos os campos obrigatórios estão preenchidos' }
+)
+
+const createCampaignSchema = z.object({
+    name: z.string()
+        .min(1, 'Nome da campanha é obrigatório')
+        .max(100, 'Nome da campanha deve ter no máximo 100 caracteres'),
+    delayMin: z.number()
+        .min(1, 'Delay mínimo deve ser pelo menos 1 segundo')
+        .max(60, 'Delay mínimo deve ser no máximo 60 segundos')
+        .optional()
+        .default(3),
+    delayMax: z.number()
+        .min(1, 'Delay máximo deve ser pelo menos 1 segundo')
+        .max(120, 'Delay máximo deve ser no máximo 120 segundos')
+        .optional()
+        .default(6),
+    scheduledFor: z.date({ message: 'Data de agendamento é obrigatória' }),
+    contactIds: z.array(z.string().uuid())
+        .min(1, 'Selecione pelo menos um contato'),
+    messages: z.array(messageSchema)
+        .min(1, 'Adicione pelo menos uma mensagem')
+}).refine(
+    (data) => (data.delayMin || 3) <= (data.delayMax || 6),
+    { message: 'Delay mínimo deve ser menor ou igual ao delay máximo', path: ['delayMin'] }
+)
 
 // Types
 export interface CreateCampaignInput {
@@ -76,12 +131,21 @@ async function getOrgAndInstance() {
  * Create a new mass campaign
  */
 export async function createCampaign(input: CreateCampaignInput) {
+    // Validate input with Zod
+    const validation = createCampaignSchema.safeParse(input)
+    if (!validation.success) {
+        const firstError = validation.error.issues[0]
+        return { success: false, error: firstError.message }
+    }
+
+    const validatedInput = validation.data
+
     const supabase = await createClient()
     const { organizationId, instanceToken, instanceConnected } = await getOrgAndInstance()
 
     console.log('[Campaign] Starting creation:', {
-        name: input.name,
-        contactCount: input.contactIds.length,
+        name: validatedInput.name,
+        contactCount: validatedInput.contactIds.length,
         instanceConnected,
         hasToken: !!instanceToken
     })
@@ -91,20 +155,12 @@ export async function createCampaign(input: CreateCampaignInput) {
         return { success: false, error: 'WhatsApp não conectado. Conecte sua instância primeiro.' }
     }
 
-    if (input.contactIds.length === 0) {
-        return { success: false, error: 'Selecione pelo menos um contato' }
-    }
-
-    if (input.messages.length === 0) {
-        return { success: false, error: 'Adicione pelo menos uma mensagem' }
-    }
-
     try {
         // 1. Fetch selected contacts with phone numbers
         const { data: contacts, error: contactsError } = await supabase
             .from('contacts')
             .select('id, name, phone')
-            .in('id', input.contactIds)
+            .in('id', validatedInput.contactIds)
 
         if (contactsError || !contacts?.length) {
             console.error('[Campaign] Error fetching contacts:', contactsError)
@@ -113,15 +169,23 @@ export async function createCampaign(input: CreateCampaignInput) {
 
         console.log('[Campaign] Found contacts:', contacts.length)
 
-        // 2. Create campaign in database (status: sending - will start immediately)
+        // 2. Determine initial status based on scheduling
+        // If scheduledFor is in the future by more than 2 minutes, set as 'scheduled'
+        // Otherwise, set as 'sending' for immediate send
+        const isScheduledForFuture = validatedInput.scheduledFor &&
+            (validatedInput.scheduledFor.getTime() - Date.now()) > 120000; // More than 2 minutes in future
+
+        const initialStatus = isScheduledForFuture ? 'scheduled' : 'sending'
+
         const { data: campaign, error: campaignError } = await supabase
             .from('campaigns')
             .insert({
                 organization_id: organizationId,
-                name: input.name,
-                message_template: input.messages[0]?.text || 'Campanha em massa',
-                status: 'sending',
-                total_contacts: contacts.length
+                name: validatedInput.name,
+                message_template: validatedInput.messages[0]?.text || 'Campanha em massa',
+                status: initialStatus,
+                total_contacts: contacts.length,
+                scheduled_for: validatedInput.scheduledFor?.toISOString() || null
             })
             .select()
             .single()
@@ -135,7 +199,7 @@ export async function createCampaign(input: CreateCampaignInput) {
 
         // 3. Try to save campaign messages (optional - table may not exist)
         try {
-            const messageInserts = input.messages.map((msg, index) => ({
+            const messageInserts = validatedInput.messages.map((msg, index) => ({
                 campaign_id: campaign.id,
                 order_index: index,
                 type: msg.type,
@@ -170,40 +234,55 @@ export async function createCampaign(input: CreateCampaignInput) {
         // 5. Build UAZAPI messages and send campaign
         const uazapiMessages = buildCampaignMessages(
             contacts.map(c => ({ phone: c.phone, name: c.name })),
-            input.messages
+            validatedInput.messages
         )
 
         console.log('[Campaign] Sending to UAZAPI:', uazapiMessages.length, 'messages')
         console.log('[Campaign] First message sample:', JSON.stringify(uazapiMessages[0], null, 2))
 
-        const scheduledMinutes = input.scheduledFor
-            ? Math.max(1, Math.round((input.scheduledFor.getTime() - Date.now()) / 60000))
+        // Calculate scheduled time
+        // If scheduledFor is provided, calculate minutes from now
+        // Otherwise, use 1 minute (immediate)
+        const scheduledMinutes = validatedInput.scheduledFor
+            ? Math.max(1, Math.round((validatedInput.scheduledFor.getTime() - Date.now()) / 60000))
             : 1
+
+        console.log('[Campaign] Scheduling config:', {
+            inputScheduledFor: validatedInput.scheduledFor?.toISOString() || 'immediate',
+            scheduledMinutes,
+            isScheduledForFuture,
+            initialStatus,
+            delayMin: validatedInput.delayMin,
+            delayMax: validatedInput.delayMax
+        })
 
         try {
             const uazapiResponse = await createMassCampaign(instanceToken, {
-                delayMin: input.delayMin || 3,
-                delayMax: input.delayMax || 6,
-                info: input.name,
+                delayMin: validatedInput.delayMin,
+                delayMax: validatedInput.delayMax,
+                info: validatedInput.name,
                 scheduledFor: scheduledMinutes,
                 messages: uazapiMessages
             })
 
             console.log('[Campaign] UAZAPI response:', JSON.stringify(uazapiResponse, null, 2))
 
-            // 6. Update campaign with UAZAPI folder_id - ALWAYS set to sending on success
+            // 6. Update campaign with UAZAPI folder_id
+            // Set status based on whether it's scheduled or immediate
+            const finalStatus = isScheduledForFuture ? 'scheduled' : 'sending'
+
             const { error: updateError } = await supabase
                 .from('campaigns')
                 .update({
                     uazapi_folder_id: uazapiResponse.folder_id || 'unknown',
-                    status: 'sending' // Always set to sending on success
+                    status: finalStatus
                 })
                 .eq('id', campaign.id)
 
             if (updateError) {
                 console.error('[Campaign] Error updating campaign:', updateError)
             } else {
-                console.log('[Campaign] Successfully updated campaign status to sending')
+                console.log('[Campaign] Successfully updated campaign status to', finalStatus)
             }
         } catch (uazapiError) {
             console.error('[Campaign] UAZAPI error:', uazapiError)
@@ -511,3 +590,154 @@ export async function deleteCampaign(campaignId: string) {
         return { success: false, error: 'Erro ao excluir campanha' }
     }
 }
+
+/**
+ * Sync campaign status from UAZAPI
+ * Updates sent_count, failed_count and status in the database
+ * Auto-finalizes campaign when complete
+ */
+export async function syncCampaignStatus(campaignId: string) {
+    const supabase = await createClient()
+    const { organizationId, instanceToken } = await getOrgAndInstance()
+
+    if (!instanceToken) {
+        return { success: false, error: 'WhatsApp não conectado' }
+    }
+
+    // Get campaign with folder_id
+    const { data: campaign, error } = await supabase
+        .from('campaigns')
+        .select('id, uazapi_folder_id, status, total_contacts, sent_count, failed_count, scheduled_for')
+        .eq('id', campaignId)
+        .eq('organization_id', organizationId)
+        .single()
+
+    if (error || !campaign) {
+        return { success: false, error: 'Campanha não encontrada' }
+    }
+
+    // Skip if campaign is already done or has no folder_id
+    if (campaign.status === 'done' || campaign.status === 'draft') {
+        return { success: true, campaign, noUpdate: true }
+    }
+
+    if (!campaign.uazapi_folder_id) {
+        return { success: false, error: 'ID da campanha UAZAPI não encontrado' }
+    }
+
+    try {
+        // Fetch status from UAZAPI
+        const statusInfo = await getCampaignStatus(instanceToken, campaign.uazapi_folder_id)
+
+        if (!statusInfo) {
+            // If UAZAPI doesn't return info, try to infer from scheduled time
+            // If scheduled_for has passed, mark as sending
+            if (campaign.status === 'scheduled' && campaign.scheduled_for) {
+                const scheduledTime = new Date(campaign.scheduled_for).getTime()
+                if (Date.now() >= scheduledTime) {
+                    await supabase
+                        .from('campaigns')
+                        .update({ status: 'sending' })
+                        .eq('id', campaignId)
+
+                    return {
+                        success: true,
+                        campaign: { ...campaign, status: 'sending' }
+                    }
+                }
+            }
+            return { success: true, campaign, noUpdate: true }
+        }
+
+        // Determine new status
+        let newStatus = campaign.status
+
+        // Map UAZAPI status to our status (UAZAPI returns: scheduled, sending, paused, done, deleting)
+        if (statusInfo.status === 'done') {
+            newStatus = 'done'
+        } else if (statusInfo.status === 'sending') {
+            newStatus = 'sending'
+        } else if (statusInfo.status === 'paused') {
+            newStatus = 'paused'
+        } else if (statusInfo.status === 'scheduled') {
+            newStatus = 'scheduled'
+        }
+
+        // Auto-finalize if all messages sent/failed
+        if (statusInfo.sent_count + statusInfo.failed_count >= campaign.total_contacts) {
+            newStatus = 'done'
+        }
+
+        // Update database if there are changes
+        const hasChanges =
+            campaign.sent_count !== statusInfo.sent_count ||
+            campaign.failed_count !== statusInfo.failed_count ||
+            campaign.status !== newStatus
+
+        if (hasChanges) {
+            await supabase
+                .from('campaigns')
+                .update({
+                    sent_count: statusInfo.sent_count,
+                    failed_count: statusInfo.failed_count,
+                    status: newStatus
+                })
+                .eq('id', campaignId)
+
+            console.log('[Campaign] Synced status:', {
+                id: campaignId,
+                sent: statusInfo.sent_count,
+                failed: statusInfo.failed_count,
+                status: newStatus
+            })
+        }
+
+        return {
+            success: true,
+            campaign: {
+                ...campaign,
+                sent_count: statusInfo.sent_count,
+                failed_count: statusInfo.failed_count,
+                status: newStatus
+            }
+        }
+    } catch (err) {
+        console.error('Sync campaign status error:', err)
+        return { success: false, error: 'Erro ao sincronizar status' }
+    }
+}
+
+/**
+ * Sync all active campaigns (sending/scheduled status)
+ * Called by frontend polling
+ */
+export async function syncAllActiveCampaigns() {
+    const supabase = await createClient()
+    const { organizationId } = await getOrgAndInstance()
+
+    // Get all campaigns that are sending or scheduled
+    const { data: campaigns, error } = await supabase
+        .from('campaigns')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .in('status', ['sending', 'scheduled'])
+
+    if (error || !campaigns?.length) {
+        return { success: true, campaigns: [] }
+    }
+
+    // Sync each campaign
+    const results = await Promise.all(
+        campaigns.map(c => syncCampaignStatus(c.id))
+    )
+
+    // Get updated campaigns
+    const { data: updatedCampaigns } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+
+    return { success: true, campaigns: updatedCampaigns || [] }
+}
+

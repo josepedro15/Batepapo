@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition, useCallback } from 'react'
+import { useState, useEffect, useTransition, useCallback, useRef } from 'react'
 import {
     Megaphone,
     Send,
@@ -38,6 +38,7 @@ import {
     pauseCampaign,
     resumeCampaign,
     deleteCampaign,
+    syncAllActiveCampaigns,
     type CreateCampaignInput
 } from './actions'
 
@@ -108,6 +109,49 @@ export default function CampaignsPage() {
     useEffect(() => {
         loadCampaigns()
     }, [])
+
+    // Poll for active campaigns status updates
+    const pollingRef = useRef<NodeJS.Timeout | null>(null)
+    
+    // Memoize check for active campaigns to avoid dependency issues
+    const hasActiveCampaigns = campaigns.some(
+        c => c.status === 'sending' || c.status === 'scheduled'
+    )
+    
+    useEffect(() => {
+        // Only poll when on list tab and there are active campaigns
+        if (activeTab === 'list' && hasActiveCampaigns) {
+            const pollStatus = async () => {
+                try {
+                    const result = await syncAllActiveCampaigns()
+                    if (result.success && result.campaigns) {
+                        setCampaigns(result.campaigns as Campaign[])
+                    }
+                } catch (err) {
+                    console.error('Error polling campaign status:', err)
+                }
+            }
+            
+            // Poll every 5 seconds
+            pollingRef.current = setInterval(pollStatus, 5000)
+            
+            // Also poll immediately on first render
+            pollStatus()
+            
+            return () => {
+                if (pollingRef.current) {
+                    clearInterval(pollingRef.current)
+                    pollingRef.current = null
+                }
+            }
+        } else {
+            // Clear any existing polling
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current)
+                pollingRef.current = null
+            }
+        }
+    }, [activeTab, hasActiveCampaigns])
 
     async function loadCampaigns() {
         setLoadingCampaigns(true)
