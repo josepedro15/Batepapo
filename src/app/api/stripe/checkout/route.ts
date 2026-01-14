@@ -23,9 +23,32 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json()
-        const { plan } = body as { plan: PlanType }
+        const { plan, priceId } = body as { plan?: PlanType; priceId?: string }
 
-        if (!plan || !PRICES[plan]) {
+        // Determine the actual price ID to use
+        let targetPriceId: string | undefined
+        let trialDays = 7 // default
+
+        if (priceId) {
+            // Dynamic price ID from database
+            targetPriceId = priceId
+
+            // Fetch trial days from database
+            const { data: priceData } = await supabase
+                .from('prices')
+                .select('trial_period_days')
+                .eq('id', priceId)
+                .single()
+
+            if (priceData?.trial_period_days) {
+                trialDays = priceData.trial_period_days
+            }
+        } else if (plan && PRICES[plan]) {
+            // Legacy plan mapping
+            targetPriceId = PRICES[plan]
+        }
+
+        if (!targetPriceId) {
             return NextResponse.json(
                 { error: 'Invalid plan selected' },
                 { status: 400 }
@@ -78,21 +101,21 @@ export async function POST(request: NextRequest) {
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price: PRICES[plan],
+                    price: targetPriceId,
                     quantity: 1,
                 },
             ],
             success_url: `${request.nextUrl.origin}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${request.nextUrl.origin}/onboarding/plan`,
             subscription_data: {
-                trial_period_days: 7,
+                trial_period_days: trialDays,
                 metadata: {
                     supabase_user_id: user.id,
                 },
             },
             metadata: {
                 supabase_user_id: user.id,
-                plan,
+                price_id: targetPriceId,
             },
         })
 

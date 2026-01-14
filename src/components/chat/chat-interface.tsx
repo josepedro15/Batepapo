@@ -67,6 +67,7 @@ export function ChatInterface({
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [showDetailsPanel, setShowDetailsPanel] = useState(true)
     const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+    const [loadingContactId, setLoadingContactId] = useState<string | null>(null)
     const [page, setPage] = useState(0)
     const [hasMore, setHasMore] = useState(true)
     const MESSAGES_PER_PAGE = 25
@@ -106,6 +107,13 @@ export function ChatInterface({
     const shouldScrollToBottomRef = useRef(true) // Flag to control auto-scroll
     const [canScrollLeft, setCanScrollLeft] = useState(false)
     const [canScrollRight, setCanScrollRight] = useState(false)
+
+    // Message cache per contact - stores messages in memory for instant switching
+    const messageCacheRef = useRef<Map<string, {
+        messages: Message[],
+        page: number,
+        hasMore: boolean
+    }>>(new Map())
 
     const checkScroll = useCallback(() => {
         if (tabsRef.current) {
@@ -373,29 +381,82 @@ export function ChatInterface({
 
         // Mark as read when selecting a contact
         markAsRead()
-        // Clear messages immediately to avoid showing previous chat
-        setMessages([])
-        // Reset pagination
-        setPage(0)
-        setHasMore(true)
-
-        // Start loading state
-        setIsLoadingMessages(true)
         // Enable auto-scroll when opening a new conversation
         shouldScrollToBottomRef.current = true
 
-        // 1. Load initial history
-        getMessages(contactId, 0, MESSAGES_PER_PAGE).then(msgs => {
-            setMessages(msgs || [])
-            setHasMore((msgs?.length || 0) === MESSAGES_PER_PAGE)
+        // Check if we have cached messages for this contact
+        const cached = messageCacheRef.current.get(contactId)
+        
+        if (cached && cached.messages.length > 0) {
+            // CACHE HIT: Show cached messages instantly (no loading!)
+            setMessages(cached.messages)
+            setPage(cached.page)
+            setHasMore(cached.hasMore)
             setIsLoadingMessages(false)
-            // Scroll after messages load
+            setLoadingContactId(null) // Clear loading state immediately for cached content
+            
+            // Scroll to bottom immediately
             requestAnimationFrame(() => {
                 scrollToBottom('instant')
             })
-        }).catch(() => {
-            setIsLoadingMessages(false)
-        })
+            
+            // Fetch new messages in background (if any)
+            const lastMessage = cached.messages[cached.messages.length - 1]
+            if (lastMessage) {
+                getNewMessages(contactId, lastMessage.created_at).then(newMsgs => {
+                    if (newMsgs && newMsgs.length > 0) {
+                        setMessages(prev => {
+                            const existingIds = new Set(prev.map(m => m.id))
+                            const trulyNew = newMsgs.filter((m: Message) => !existingIds.has(m.id))
+                            if (trulyNew.length > 0) {
+                                const updated = [...prev, ...trulyNew].sort((a, b) => 
+                                    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                                )
+                                // Update cache
+                                messageCacheRef.current.set(contactId, {
+                                    messages: updated,
+                                    page: cached.page,
+                                    hasMore: cached.hasMore
+                                })
+                                return updated
+                            }
+                            return prev
+                        })
+                        requestAnimationFrame(() => scrollToBottom('smooth'))
+                    }
+                }).catch(console.error)
+            }
+        } else {
+            // CACHE MISS: First visit - fetch from server
+            setMessages([])
+            setPage(0)
+            setHasMore(true)
+            setIsLoadingMessages(true)
+
+            getMessages(contactId, 0, MESSAGES_PER_PAGE).then(msgs => {
+                const messageList = msgs || []
+                const hasMorePages = messageList.length === MESSAGES_PER_PAGE
+                
+                setMessages(messageList)
+                setHasMore(hasMorePages)
+                setIsLoadingMessages(false)
+                setLoadingContactId(null) // Clear loading state when messages are loaded
+                
+                // Save to cache
+                messageCacheRef.current.set(contactId, {
+                    messages: messageList,
+                    page: 0,
+                    hasMore: hasMorePages
+                })
+                
+                requestAnimationFrame(() => {
+                    scrollToBottom('instant')
+                })
+            }).catch(() => {
+                setIsLoadingMessages(false)
+                setLoadingContactId(null) // Clear loading state on error too
+            })
+        }
 
         // 2. OPTIMIZED Polling: Only fetch NEW messages (incremental)
         const pollInterval = setInterval(async () => {
@@ -465,10 +526,20 @@ export function ChatInterface({
         }
     }, [selectedContact?.id, markAsRead, scrollToBottom]) // Only re-run if ID changes
 
-    // Keep messagesRef in sync with messages state
+    // Keep messagesRef in sync with messages state AND update cache
     useEffect(() => {
         messagesRef.current = messages
-    }, [messages])
+        
+        // Update cache for current contact
+        if (selectedContact?.id && messages.length > 0) {
+            const currentCache = messageCacheRef.current.get(selectedContact.id)
+            messageCacheRef.current.set(selectedContact.id, {
+                messages: messages.filter(m => !m.id.startsWith('temp-')), // Don't cache optimistic messages
+                page: currentCache?.page || 0,
+                hasMore: currentCache?.hasMore ?? true
+            })
+        }
+    }, [messages, selectedContact?.id])
 
     // Sync selectedContact when lists update (e.g. after adding a tag)
     useEffect(() => {
@@ -613,6 +684,7 @@ export function ChatInterface({
     }
 
     const handleContactSelect = (contact: Contact) => {
+        setLoadingContactId(contact.id) // Set loading state for the clicked contact
         const params = new URLSearchParams(searchParams.toString())
         params.set('chatId', contact.id)
         router.replace(`${pathname}?${params.toString()}`)
@@ -696,57 +768,75 @@ export function ChatInterface({
                             )}
                             style={{ animationDelay: `${index * 30}ms` }}
                         >
-                            <div className="flex items-center gap-3 mb-1">
-                                <div className="relative h-11 w-11 flex-shrink-0">
-                                    {contact.avatar_url ? (
-                                        <img src={contact.avatar_url} alt={contact.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border/50" />
-                                    ) : (
-                                        <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
-                                            {contact.name.charAt(0).toUpperCase()}
+                            {loadingContactId === contact.id ? (
+                                /* Loading State */
+                                <div className="flex items-center gap-3 mb-1">
+                                    <div className="relative h-11 w-11 flex-shrink-0">
+                                        <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+                                            <Loader2 className="h-5 w-5 text-primary animate-spin" />
                                         </div>
-                                    )}
-                                    {activeTab === 'awaiting' && (
-                                        <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-warning flex items-center justify-center">
-                                            <Clock className="h-2.5 w-2.5 text-warning-foreground" />
-                                        </div>
-                                    )}
-                                    {activeTab === 'finished' && (
-                                        <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-success flex items-center justify-center">
-                                            <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
-                                        </div>
-                                    )}
-                                    {activeTab !== 'awaiting' && activeTab !== 'finished' && (contact.unread_count ?? 0) > 0 && (
-                                        <div className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-primary flex items-center justify-center animate-pulse">
-                                            <span className="text-[10px] font-bold text-primary-foreground">
-                                                {contact.unread_count! > 99 ? '99+' : contact.unread_count}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start">
-                                        <span className="font-bold text-foreground truncate">{contact.name}</span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                        {contact.last_message ? (
-                                            <>
-                                                {contact.last_message.sender_type === 'user' && (
-                                                    <span className="text-primary/70">Você: </span>
-                                                )}
-                                                {contact.last_message.media_type === 'audio' ? (
-                                                    '🎵 Áudio'
-                                                ) : contact.last_message.media_type === 'image' ? (
-                                                    '📷 Imagem'
-                                                ) : (
-                                                    contact.last_message.body || 'Mensagem'
-                                                )}
-                                            </>
-                                        ) : (
-                                            contact.phone
-                                        )}
-                                    </p>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start">
+                                            <span className="font-bold text-foreground truncate">{contact.name}</span>
+                                        </div>
+                                        <p className="text-xs text-primary/70 animate-pulse">Carregando conversa...</p>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                /* Normal State */
+                                <div className="flex items-center gap-3 mb-1">
+                                    <div className="relative h-11 w-11 flex-shrink-0">
+                                        {contact.avatar_url ? (
+                                            <img src={contact.avatar_url} alt={contact.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border/50" />
+                                        ) : (
+                                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
+                                                {contact.name.charAt(0).toUpperCase()}
+                                            </div>
+                                        )}
+                                        {activeTab === 'awaiting' && (
+                                            <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-warning flex items-center justify-center">
+                                                <Clock className="h-2.5 w-2.5 text-warning-foreground" />
+                                            </div>
+                                        )}
+                                        {activeTab === 'finished' && (
+                                            <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-success flex items-center justify-center">
+                                                <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
+                                            </div>
+                                        )}
+                                        {activeTab !== 'awaiting' && activeTab !== 'finished' && (contact.unread_count ?? 0) > 0 && (
+                                            <div className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-primary flex items-center justify-center animate-pulse">
+                                                <span className="text-[10px] font-bold text-primary-foreground">
+                                                    {contact.unread_count! > 99 ? '99+' : contact.unread_count}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start">
+                                            <span className="font-bold text-foreground truncate">{contact.name}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                            {contact.last_message ? (
+                                                <>
+                                                    {contact.last_message.sender_type === 'user' && (
+                                                        <span className="text-primary/70">Você: </span>
+                                                    )}
+                                                    {contact.last_message.media_type === 'audio' ? (
+                                                        '🎵 Áudio'
+                                                    ) : contact.last_message.media_type === 'image' ? (
+                                                        '📷 Imagem'
+                                                    ) : (
+                                                        contact.last_message.body || 'Mensagem'
+                                                    )}
+                                                </>
+                                            ) : (
+                                                contact.phone
+                                            )}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </button>
                     ))}
 

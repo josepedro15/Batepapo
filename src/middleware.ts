@@ -61,16 +61,41 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    // Helper function to check active subscription
-    const checkSubscription = async (userId: string) => {
-        const { data: subscription } = await supabase
+    // Helper function to check active subscription by organization
+    // Handles both cases: subscription linked by organization_id OR by owner's user_id
+    const checkSubscription = async (organizationId: string) => {
+        // First, try to find subscription by organization_id
+        const { data: subByOrg } = await supabase
             .from('subscriptions')
             .select('id, status')
-            .eq('user_id', userId)
+            .eq('organization_id', organizationId)
             .in('status', ['active', 'trialing'])
             .limit(1)
             .single()
-        return subscription
+
+        if (subByOrg) return subByOrg
+
+        // Fallback: Find the organization owner and check their user_id
+        // This handles cases where organization_id was not set in subscriptions
+        const { data: ownerMembership } = await supabase
+            .from('organization_members')
+            .select('user_id')
+            .eq('organization_id', organizationId)
+            .eq('role', 'owner')
+            .limit(1)
+            .single()
+
+        if (!ownerMembership) return null
+
+        const { data: subByOwner } = await supabase
+            .from('subscriptions')
+            .select('id, status')
+            .eq('user_id', ownerMembership.user_id)
+            .in('status', ['active', 'trialing'])
+            .limit(1)
+            .single()
+
+        return subByOwner
     }
 
     // If user is signed in and accessing dashboard
@@ -78,7 +103,7 @@ export async function middleware(request: NextRequest) {
         // Check if user has an organization
         const { data: membership } = await supabase
             .from('organization_members')
-            .select('id')
+            .select('id, organization_id, role')
             .eq('user_id', user.id)
             .limit(1)
             .single()
@@ -88,24 +113,51 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/onboarding', request.url))
         }
 
-        // Check if user has an active subscription
-        const subscription = await checkSubscription(user.id)
+        // Check if the organization has an active subscription
+        const subscription = await checkSubscription(membership.organization_id)
         if (!subscription) {
             return NextResponse.redirect(new URL('/onboarding/plan', request.url))
         }
+
+        // Role-based route protection
+        const rolePermissions: Record<string, string[]> = {
+            attendant: ['/dashboard', '/dashboard/kanban', '/dashboard/chat'],
+            manager: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts'],
+            owner: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts', '/dashboard/settings', '/dashboard/admin'],
+        }
+
+        const userRole = membership.role || 'attendant'
+        const allowedRoutes = rolePermissions[userRole] || rolePermissions.attendant
+
+        // Check if current path is allowed for user's role
+        const currentPath = request.nextUrl.pathname
+        const isAllowed = allowedRoutes.some(route => {
+            // Exact match for /dashboard
+            if (route === '/dashboard') {
+                return currentPath === '/dashboard'
+            }
+            // Prefix match for other routes (e.g., /dashboard/chat/123)
+            return currentPath === route || currentPath.startsWith(route + '/')
+        })
+
+        // If route is not allowed, redirect to dashboard
+        if (!isAllowed) {
+            return NextResponse.redirect(new URL('/dashboard', request.url))
+        }
     }
+
 
     // If user is on onboarding pages
     if (user && request.nextUrl.pathname.startsWith('/onboarding')) {
         const { data: membership } = await supabase
             .from('organization_members')
-            .select('id')
+            .select('id, organization_id')
             .eq('user_id', user.id)
             .limit(1)
             .single()
 
-        // Check subscription status
-        const subscription = await checkSubscription(user.id)
+        // Check subscription status by organization
+        const subscription = membership ? await checkSubscription(membership.organization_id) : null
 
         // If user has organization AND active subscription, redirect to dashboard
         if (membership && subscription) {

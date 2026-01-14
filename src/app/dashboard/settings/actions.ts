@@ -304,6 +304,65 @@ export async function updateUserAccount(formData: FormData) {
     return { success: true }
 }
 
+export async function removeTeamMember(userId: string) {
+    const supabase = await createClient()
+
+    // 1. Verify permissions (Owner/Manager only)
+    const { data: { user: requester } } = await supabase.auth.getUser()
+    if (!requester) return { error: 'Unauthorized' }
+
+    const { data: membership } = await supabase
+        .from('organization_members')
+        .select('organization_id, role')
+        .eq('user_id', requester.id)
+        .single()
+
+    if (!membership || !['owner', 'manager'].includes(membership.role)) {
+        return { error: 'Apenas gestores podem remover usuários.' }
+    }
+
+    // 2. Prevent self-removal
+    if (userId === requester.id) {
+        return { error: 'Você não pode remover a si mesmo.' }
+    }
+
+    const adminClient = createAdminClient()
+    if (!adminClient) {
+        return { error: 'Configuração do servidor incompleta. Contate o administrador.' }
+    }
+
+    // 3. Verify target user is in the same org
+    const { data: targetMember } = await adminClient
+        .from('organization_members')
+        .select('id, role')
+        .eq('organization_id', membership.organization_id)
+        .eq('user_id', userId)
+        .single()
+
+    if (!targetMember) {
+        return { error: 'Usuário não encontrado nesta equipe.' }
+    }
+
+    // 4. Prevent removing owners (only another owner can demote first)
+    if (targetMember.role === 'owner') {
+        return { error: 'Não é possível remover um gestor. Altere a função primeiro.' }
+    }
+
+    // 5. Remove from organization
+    const { error: removeError } = await adminClient
+        .from('organization_members')
+        .delete()
+        .eq('id', targetMember.id)
+
+    if (removeError) {
+        console.error('Remove Member Error:', removeError)
+        return { error: `Erro ao remover membro: ${removeError.message}` }
+    }
+
+    revalidatePath('/dashboard/settings')
+    return { success: true }
+}
+
 // --- Tag Management Actions ---
 
 export async function getTags() {

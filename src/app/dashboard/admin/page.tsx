@@ -58,6 +58,15 @@ export default function AdminPage() {
     })
 
     useEffect(() => {
+        // Always fetch plans (needed for user plan selector)
+        fetchPlans()
+        
+        if (activeTab === 'users') {
+            fetchUsers()
+        }
+    }, [])
+
+    useEffect(() => {
         if (activeTab === 'users') {
             fetchUsers()
         } else {

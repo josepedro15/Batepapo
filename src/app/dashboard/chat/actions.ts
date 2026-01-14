@@ -219,7 +219,27 @@ export async function sendMessage(contactId: string, body: string, orgId: string
 
     if (!contact) throw new Error('Contact not found')
 
-    // 2. Insert message with 'sending' status
+    // 2. Check if organization has show_attendant_name enabled
+    let messageBody = body
+    const { data: org } = await supabase
+        .from('organizations')
+        .select('show_attendant_name')
+        .eq('id', orgId)
+        .single()
+
+    if (org?.show_attendant_name) {
+        // Fetch user's profile name
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('name')
+            .eq('id', user.id)
+            .single()
+
+        const attendantName = profile?.name || 'Atendente'
+        messageBody = `*${attendantName}:*\n\n${body}`
+    }
+
+    // 3. Insert message with 'sending' status (store original body for display in UI)
     const { data: msg, error } = await supabase.from('messages').insert({
         organization_id: orgId,
         contact_id: contactId,
@@ -233,7 +253,7 @@ export async function sendMessage(contactId: string, body: string, orgId: string
 
     revalidatePath('/dashboard/chat')
 
-    // 3. Send via UAZAPI (async, don't block UI but wait for success to update status)
+    // 4. Send via UAZAPI (async, don't block UI but wait for success to update status)
     try {
         const { data: instance } = await supabase
             .from('whatsapp_instances')
@@ -245,11 +265,11 @@ export async function sendMessage(contactId: string, body: string, orgId: string
             throw new Error('WhatsApp disconnected')
         }
 
-        // Send text message
+        // Send text message with potentially prefixed name
         const response = await uazapi.sendTextMessage(
             instance.instance_token,
             contact.phone,
-            body
+            messageBody
         )
 
         // Update status to 'sent' AND save whatsapp_id

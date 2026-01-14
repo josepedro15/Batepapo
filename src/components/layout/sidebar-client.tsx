@@ -18,7 +18,8 @@ import { logout } from "@/app/dashboard/logout-action"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useNotification } from "@/components/providers/notification-provider"
 
-const navigation = [
+// Define all navigation items
+const allNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
     { name: "Kanban", href: "/dashboard/kanban", icon: LayoutDashboard },
     { name: "Chat", href: "/dashboard/chat", icon: MessageSquare },
@@ -27,17 +28,33 @@ const navigation = [
     { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ]
 
+// Define allowed routes per role
+const rolePermissions: Record<string, string[]> = {
+    attendant: ["/dashboard", "/dashboard/kanban", "/dashboard/chat"],
+    manager: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts"],
+    owner: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/settings"],
+}
+
 export function SidebarClient({
     organizations,
     currentOrgId,
-    isSuperAdmin
+    isSuperAdmin,
+    userRole = 'attendant'
 }: {
     organizations: any[],
     currentOrgId: string,
-    isSuperAdmin: boolean
+    isSuperAdmin: boolean,
+    userRole?: 'owner' | 'manager' | 'attendant'
 }) {
     const pathname = usePathname()
     const { unreadCount } = useNotification()
+
+    // Super admins have access to everything
+    const allowedRoutes = isSuperAdmin ? allNavigation.map(n => n.href) : (rolePermissions[userRole] || rolePermissions.attendant)
+    
+    // Filter navigation based on role
+    const navigation = allNavigation.filter(item => allowedRoutes.includes(item.href))
+
 
     return (
         <div className={cn(

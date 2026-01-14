@@ -5,6 +5,7 @@ import { TeamManagement } from '@/components/settings/team-management'
 import { TagManagement } from '@/components/settings/tag-management'
 import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
 import { AISettingsCard } from '@/components/settings/ai-settings-card'
+import { MessageSettingsCard } from '@/components/settings/message-settings-card'
 import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound } from 'lucide-react'
 
 export default async function SettingsPage() {
@@ -49,23 +50,29 @@ export default async function SettingsPage() {
                     <h2 className="text-headline text-foreground">Equipe & Conexões</h2>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 animate-slide-up" style={{ animationDelay: '150ms' }}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="animate-slide-up" style={{ animationDelay: '150ms' }}>
                         <TeamManagement members={members || []} />
                     </div>
-                    <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
-                        <WhatsAppConnectionCard />
+                    <div className="space-y-6">
+                        <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
+                            <WhatsAppConnectionCard />
+                        </div>
+                        <div className="animate-slide-up" style={{ animationDelay: '250ms' }}>
+                            <MessageSettingsCard />
+                        </div>
                     </div>
                 </div>
             </section>
 
             {/* Seção: IA Agent Config */}
-            <section className="animate-fade-in" style={{ animationDelay: '200ms' }}>
+            <section className="animate-fade-in" style={{ animationDelay: '300ms' }}>
                 <AISettingsCard />
             </section>
 
+
             {/* Seção: Integrações */}
-            <section className="animate-fade-in" style={{ animationDelay: '250ms' }}>
+            <section className="animate-fade-in" style={{ animationDelay: '350ms' }}>
                 <div className="flex items-center gap-3 mb-4">
                     <div className="h-8 w-8 rounded-lg bg-accent/10 flex items-center justify-center">
                         <KeyRound className="h-4 w-4 text-accent" />
@@ -73,9 +80,9 @@ export default async function SettingsPage() {
                     <h2 className="text-headline text-foreground">Integrações & API</h2>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* API Keys Section */}
-                    <div className="lg:col-span-2 glass p-6 rounded-2xl animate-slide-up" style={{ animationDelay: '300ms' }}>
+                    <div className="glass p-6 rounded-2xl animate-slide-up" style={{ animationDelay: '400ms' }}>
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center border border-accent/20">
@@ -136,7 +143,7 @@ export default async function SettingsPage() {
                     </div>
 
                     {/* Tag Management */}
-                    <div className="animate-slide-up" style={{ animationDelay: '350ms' }}>
+                    <div className="animate-slide-up" style={{ animationDelay: '450ms' }}>
                         <TagManagement />
                     </div>
                 </div>

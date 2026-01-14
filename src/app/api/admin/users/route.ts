@@ -109,13 +109,14 @@ export async function PATCH(request: NextRequest) {
             }
 
             // Verify price exists
-            const { data: priceCheck } = await adminClient
+            const { data: priceCheck, error: priceError } = await adminClient
                 .from('prices')
                 .select('id')
                 .eq('id', priceId)
                 .single()
 
-            if (!priceCheck) {
+            if (priceError || !priceCheck) {
+                console.error('Price lookup error:', priceError)
                 return NextResponse.json({ error: 'Price ID not found: ' + priceId }, { status: 400 })
             }
 
@@ -133,37 +134,60 @@ export async function PATCH(request: NextRequest) {
             const nextYear = new Date()
             nextYear.setFullYear(nextYear.getFullYear() + 1)
 
-            const subData = {
-                user_id: userId,
-                status: 'active',
-                price_id: targetPriceId,
-                current_period_start: now,
-                current_period_end: nextYear.toISOString(),
-                cancel_at_period_end: false,
-                metadata: { manual_override_by: 'admin' }
-            }
+            // Get user's organization
+            const { data: membership } = await adminClient
+                .from('organization_members')
+                .select('organization_id')
+                .eq('user_id', userId)
+                .limit(1)
+                .single()
 
             if (existingSub) {
-                await adminClient
+                // Update existing subscription
+                const { error: updateError } = await adminClient
                     .from('subscriptions')
-                    .update(subData)
+                    .update({
+                        price_id: targetPriceId,
+                        status: 'active',
+                        current_period_start: now,
+                        current_period_end: nextYear.toISOString(),
+                        cancel_at_period_end: false,
+                        organization_id: membership?.organization_id || null,
+                        updated_at: now
+                    })
                     .eq('id', existingSub.id)
-            } else {
-                // Should link to organization if possible
-                const { data: membership } = await adminClient
-                    .from('organization_members')
-                    .select('organization_id')
-                    .eq('user_id', userId)
-                    .limit(1)
-                    .single()
 
-                await adminClient
+                if (updateError) {
+                    console.error('Subscription update error:', updateError)
+                    return NextResponse.json({ error: 'Failed to update subscription: ' + updateError.message }, { status: 500 })
+                }
+
+                console.log('Updated subscription:', existingSub.id, 'for user:', userId)
+            } else {
+                // Create new subscription
+                const newSubId = `sub_manual_${Date.now()}`
+                const { error: insertError } = await adminClient
                     .from('subscriptions')
                     .insert({
-                        id: `sub_manual_${Date.now()}`,
-                        ...subData,
-                        organization_id: membership?.organization_id
+                        id: newSubId,
+                        user_id: userId,
+                        organization_id: membership?.organization_id || null,
+                        price_id: targetPriceId,
+                        status: 'active',
+                        quantity: 1,
+                        current_period_start: now,
+                        current_period_end: nextYear.toISOString(),
+                        cancel_at_period_end: false,
+                        created_at: now,
+                        updated_at: now
                     })
+
+                if (insertError) {
+                    console.error('Subscription insert error:', insertError)
+                    return NextResponse.json({ error: 'Failed to create subscription: ' + insertError.message }, { status: 500 })
+                }
+
+                console.log('Created subscription:', newSubId, 'for user:', userId)
             }
         }
 

@@ -1,14 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, Trash2, Plus, UserPlus, X, Pencil, Shield, Crown, UserCheck } from 'lucide-react'
-import { createUserAccount, updateUserAccount } from '@/app/dashboard/settings/actions'
+import { Users, Trash2, Plus, UserPlus, X, Pencil, Shield, Crown, UserCheck, AlertTriangle } from 'lucide-react'
+import { createUserAccount, updateUserAccount, removeTeamMember } from '@/app/dashboard/settings/actions'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export function TeamManagement({ members }: { members: any[] }) {
     const [isInviteOpen, setIsInviteOpen] = useState(false)
     const [editingUser, setEditingUser] = useState<any | null>(null)
+    const [userToDelete, setUserToDelete] = useState<any | null>(null)
     const [loading, setLoading] = useState(false)
 
     async function handleAddMember(formData: FormData) {
@@ -34,6 +35,21 @@ export function TeamManagement({ members }: { members: any[] }) {
         } else {
             toast.success('Usuário atualizado com sucesso!')
             setEditingUser(null)
+        }
+    }
+
+    async function handleDeleteMember() {
+        if (!userToDelete) return
+        
+        setLoading(true)
+        const result = await removeTeamMember(userToDelete.user_id)
+        setLoading(false)
+
+        if (result.error) {
+            toast.error(result.error)
+        } else {
+            toast.success('Membro removido da equipe!')
+            setUserToDelete(null)
         }
     }
 
@@ -116,6 +132,7 @@ export function TeamManagement({ members }: { members: any[] }) {
 
                                         {member.role !== 'owner' && (
                                             <button
+                                                onClick={() => setUserToDelete(member)}
                                                 className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all duration-200"
                                                 title="Remover membro"
                                             >
@@ -312,6 +329,52 @@ export function TeamManagement({ members }: { members: any[] }) {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {userToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+                    <div className="glass-heavy p-6 rounded-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200 shadow-2xl border border-border/50">
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-destructive/20 to-destructive/5 flex items-center justify-center border border-destructive/20">
+                                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                                </div>
+                                <h3 className="text-xl font-bold text-foreground">Remover Membro</h3>
+                            </div>
+                            <button onClick={() => setUserToDelete(null)} className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted rounded-lg">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="mb-6">
+                            <p className="text-muted-foreground">
+                                Tem certeza que deseja remover <span className="font-semibold text-foreground">{userToDelete.profiles?.name || 'este usuário'}</span> da equipe?
+                            </p>
+                            <p className="text-sm text-muted-foreground/70 mt-2">
+                                Esta ação irá desvincular o membro da organização. O usuário não poderá mais acessar os recursos da equipe.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setUserToDelete(null)}
+                                className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3 rounded-xl transition-all duration-200"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteMember}
+                                disabled={loading}
+                                className="flex-1 bg-gradient-to-r from-destructive to-destructive/80 hover:from-destructive/90 hover:to-destructive/70 disabled:opacity-50 text-destructive-foreground font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-destructive/20"
+                            >
+                                {loading ? 'Removendo...' : <><Trash2 className="h-4 w-4" /> Remover</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

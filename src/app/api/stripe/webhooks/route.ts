@@ -151,12 +151,20 @@ async function upsertSubscription(subscription: Stripe.Subscription) {
     const userId = subscription.metadata?.supabase_user_id
     if (!userId) return
 
+    // Get user's organization to link subscription properly
+    const { data: membership } = await adminClient
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .single()
+
     const priceId = subscription.items.data[0]?.price.id
     const item = subscription.items.data[0]
 
     await adminClient.from('subscriptions').upsert({
         id: subscription.id,
         user_id: userId,
+        organization_id: membership?.organization_id || null,
         price_id: priceId,
         status: subscription.status,
         quantity: item?.quantity || 1,
