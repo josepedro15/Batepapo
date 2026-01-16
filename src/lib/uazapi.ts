@@ -380,7 +380,7 @@ export async function listContacts(
         body: JSON.stringify({
             page: params.page || 1,
             pageSize: params.pageSize || 20,
-            search: params.search // Assuming the API supports search in body
+            ...(params.search ? { search: params.search } : {})
         })
     })
 
