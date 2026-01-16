@@ -180,8 +180,10 @@ export async function POST(request: NextRequest) {
             const digits = phoneFromChatId.replace(/\D/g, '')
             const rawPhone = `+${digits}`
 
-            // Get contact name
-            const contactName = msg.senderName || chat?.name || chat?.wa_contactName || rawPhone
+            // Get contact name - use phone if message is from us, otherwise use sender name
+            const contactName = msg.fromMe
+                ? rawPhone  // If message is from us, use phone number as name
+                : (msg.senderName || chat?.name || chat?.wa_contactName || rawPhone)  // Otherwise use sender name
 
             console.log('Looking for contact:', { rawPhone, contactName, organizationId })
 
