@@ -395,7 +395,7 @@ export async function listContacts(
 
     // DEBUG: Log first contact structure to help debug "Unknown" issue
     if (rawContacts.length > 0) {
-        // console.log('[UAZAPI DEBUG] First contact keys:', Object.keys(rawContacts[0]))
+        console.log('[UAZAPI DEBUG] First contact keys:', Object.keys(rawContacts[0]))
     }
 
     const formattedContacts = rawContacts
@@ -418,6 +418,22 @@ export async function listContacts(
                 profilePicUrl: c.profilePicUrl || c.image || c.picture || null
             }
         })
+
+    // Fallback: If no contacts found via /contacts/list on first page, try /contacts
+    if (formattedContacts.length === 0 && (!params.page || params.page === 1) && !params.search) {
+        console.log('[UAZAPI] listContacts returned 0 items, trying /contacts fallback')
+        try {
+            const fallbackContacts = await getContacts(instanceToken)
+            return {
+                contacts: fallbackContacts,
+                total: fallbackContacts.length,
+                page: 1,
+                pageSize: fallbackContacts.length
+            }
+        } catch (err) {
+            console.error('[UAZAPI] Fallback also failed:', err)
+        }
+    }
 
     return {
         contacts: formattedContacts,
