@@ -59,15 +59,35 @@ export async function getChatData() {
 
         const contactIds = contacts.map(c => c.id)
 
-        // Fetch recent messages for these contacts (limited per contact for performance)
-        // We fetch last 5 messages per contact to determine last_message and unread_count
-        // This is more efficient than fetching ALL messages
-        const { data: messages } = await supabase
-            .from('messages')
-            .select('contact_id, body, sender_type, media_type, created_at')
-            .in('contact_id', contactIds)
-            .order('created_at', { ascending: false })
-            .limit(contactIds.length * 5) // Limit to ~5 messages per contact
+        // Fetch recent messages for these contacts
+        // We use a custom RPC function to efficiently get last 5 messages PER CONTACT
+        // preventing one contact from eating up the limit of others
+        let messages: any[] | null = null
+
+        try {
+            const { data: rpcData, error: rpcError } = await supabase
+                .rpc('get_recent_messages_for_contacts', {
+                    contact_ids: contactIds,
+                    limit_per_contact: 5
+                })
+
+            if (rpcError) {
+                // If the function doesn't exist yet (e.g. migration not run), fall back
+                console.warn('RPC get_recent_messages_for_contacts failed, falling back to basic query:', rpcError.message)
+                throw rpcError
+            }
+
+            messages = rpcData
+        } catch (e) {
+            // Fallback: Use the old method (susceptible to starvation bug, but works for basic cases)
+            const { data: fallbackData } = await supabase
+                .from('messages')
+                .select('contact_id, body, sender_type, media_type, created_at')
+                .in('contact_id', contactIds)
+                .order('created_at', { ascending: false })
+                .limit(contactIds.length * 5)
+            messages = fallbackData
+        }
 
         // Build maps for last message and unread count
         const lastMessageMap = new Map<string, {
