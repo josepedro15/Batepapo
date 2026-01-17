@@ -10,7 +10,8 @@ import {
     Settings,
     Users,
     LogOut,
-    Shield
+    Shield,
+    Zap
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OrgSwitcher } from "./org-switcher"
@@ -25,14 +26,15 @@ const allNavigation = [
     { name: "Chat", href: "/dashboard/chat", icon: MessageSquare },
     { name: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
     { name: "Contatos", href: "/dashboard/contacts", icon: Users },
+    { name: "Msg. Rápidas", href: "/dashboard/quick-messages", icon: Zap },
     { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ]
 
 // Define allowed routes per role
 const rolePermissions: Record<string, string[]> = {
-    attendant: ["/dashboard", "/dashboard/kanban", "/dashboard/chat"],
-    manager: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts"],
-    owner: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/settings"],
+    attendant: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/quick-messages"],
+    manager: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/quick-messages"],
+    owner: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/settings", "/dashboard/quick-messages"],
 }
 
 export function SidebarClient({
@@ -51,7 +53,7 @@ export function SidebarClient({
 
     // Super admins have access to everything
     const allowedRoutes = isSuperAdmin ? allNavigation.map(n => n.href) : (rolePermissions[userRole] || rolePermissions.attendant)
-    
+
     // Filter navigation based on role
     const navigation = allNavigation.filter(item => allowedRoutes.includes(item.href))
 
@@ -71,9 +73,9 @@ export function SidebarClient({
 
             {/* Navigation */}
             <nav className="flex-1 w-full px-2 space-y-2">
-            {navigation.map((item) => {
+                {navigation.map((item) => {
                     // Dashboard should only be active on exact /dashboard path
-                    const isActive = item.href === '/dashboard' 
+                    const isActive = item.href === '/dashboard'
                         ? pathname === '/dashboard'
                         : pathname?.startsWith(item.href)
                     const isChat = item.name === 'Chat'
