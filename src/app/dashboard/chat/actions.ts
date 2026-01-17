@@ -878,8 +878,6 @@ export async function getContact(contactId: string) {
 
 export async function deleteConversation(contactId: string) {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
 
     // Delete all messages for this contact first
     const { error: messagesError } = await supabase
@@ -909,8 +907,6 @@ export async function deleteConversation(contactId: string) {
 
 export async function updateContactName(contactId: string, newName: string) {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
 
     if (!newName.trim()) {
         throw new Error('Name cannot be empty')
