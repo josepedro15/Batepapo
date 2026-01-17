@@ -1,24 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 import { CreateContactDialog } from '@/components/dialogs/create-contact-dialog'
 import { Users } from 'lucide-react'
 import { ContactsView } from '@/components/contacts/contacts-view'
+import { getContactsPaginated } from './actions'
 
 export default async function ContactsPage() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
-
-    const { data: member } = await supabase
-        .from('organization_members')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .single()
-
-    const { data: contacts } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('organization_id', member?.organization_id)
-        .order('created_at', { ascending: false })
+    // Fetch initial data with pagination
+    const initialData = await getContactsPaginated(1, 50)
 
     return (
         <div className="min-h-[calc(100vh-6rem)] space-y-8">
@@ -38,7 +25,7 @@ export default async function ContactsPage() {
                 </div>
             </div>
 
-            <ContactsView initialContacts={contacts || []} />
+            <ContactsView initialData={initialData} />
         </div>
     )
 }

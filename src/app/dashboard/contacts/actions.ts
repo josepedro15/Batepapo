@@ -9,6 +9,81 @@ export type ImportResult = {
     errors?: string[]
 }
 
+export type ContactsResult = {
+    contacts: any[]
+    totalCount: number
+    activeCount: number
+    page: number
+    pageSize: number
+    totalPages: number
+}
+
+export async function getContactsPaginated(
+    page: number = 1,
+    pageSize: number = 50,
+    search?: string
+): Promise<ContactsResult> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { contacts: [], totalCount: 0, activeCount: 0, page: 1, pageSize, totalPages: 0 }
+    }
+
+    const { data: member } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single()
+
+    if (!member) {
+        return { contacts: [], totalCount: 0, activeCount: 0, page: 1, pageSize, totalPages: 0 }
+    }
+
+    const offset = (page - 1) * pageSize
+
+    // Build query for contacts
+    let query = supabase
+        .from('contacts')
+        .select('*', { count: 'exact' })
+        .eq('organization_id', member.organization_id)
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`
+        query = query.or(`name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`)
+    }
+
+    // Get paginated results
+    const { data: contacts, count, error } = await query
+        .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1)
+
+    if (error) {
+        console.error('Error fetching contacts:', error)
+        return { contacts: [], totalCount: 0, activeCount: 0, page, pageSize, totalPages: 0 }
+    }
+
+    // Get active count
+    const { count: activeCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', member.organization_id)
+        .eq('status', 'open')
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / pageSize)
+
+    return {
+        contacts: contacts || [],
+        totalCount,
+        activeCount: activeCount || 0,
+        page,
+        pageSize,
+        totalPages
+    }
+}
+
 export async function importContacts(contacts: { name: string; phone: string; tags?: string[] }[]): Promise<ImportResult> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -63,29 +138,38 @@ export async function importContacts(contacts: { name: string; phone: string; ta
     }
 
     try {
-        // Upsert based on phone number and organization_id to avoid duplicates
-        // Note: This requires a unique constraint on (organization_id, phone) in the database
-        // for 'upsert' to work seamlessly as intended (updating existing).
-        // If not present, we rely on the implementation. 
-        // Assuming typical setup, we'll try to insert. If conflict, we update valid fields.
+        // Insert in batches of 500 to avoid timeout
+        const batchSize = 500
+        let insertedCount = 0
 
-        const { error } = await supabase
-            .from('contacts')
-            .upsert(validContacts, {
-                onConflict: 'organization_id,phone',
-                ignoreDuplicates: false
-            })
+        for (let i = 0; i < validContacts.length; i += batchSize) {
+            const batch = validContacts.slice(i, i + batchSize)
 
-        if (error) {
-            console.error('Database error during import:', error)
-            return { success: false, errors: ['Erro ao salvar no banco de dados', error.message, ...errors] }
+            const { error } = await supabase
+                .from('contacts')
+                .upsert(batch, {
+                    onConflict: 'organization_id,phone',
+                    ignoreDuplicates: false
+                })
+
+            if (error) {
+                console.error('Database error during import batch:', error)
+                errors.push(`Erro no lote ${Math.floor(i / batchSize) + 1}: ${error.message}`)
+            } else {
+                insertedCount += batch.length
+            }
         }
 
         revalidatePath('/dashboard/contacts')
-        return { success: true, count: validContacts.length, errors: errors.length > 0 ? errors : undefined }
+        return {
+            success: insertedCount > 0,
+            count: insertedCount,
+            errors: errors.length > 0 ? errors : undefined
+        }
 
     } catch (err) {
         console.error('Unexpected error:', err)
         return { success: false, errors: ['Erro inesperado no servidor', ...errors] }
     }
 }
+
