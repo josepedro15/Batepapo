@@ -87,13 +87,16 @@ export default async function SettingsPage() {
 
             {/* Seção: Informações do Negócio (NOVO) */}
             <section className="animate-fade-in" style={{ animationDelay: '0ms' }}>
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center gap-3 mb-2">
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
                         <Building2 className="h-4 w-4 text-primary" />
                     </div>
-                    <h2 className="text-headline text-foreground">Informações do Negócio</h2>
+                    <div>
+                        <h2 className="text-headline text-foreground">Informações do Negócio</h2>
+                        <p className="text-sm text-muted-foreground">Contexto global para todas as IAs do sistema.</p>
+                    </div>
                 </div>
-                <div className="max-w-3xl">
+                <div className="max-w-3xl mt-4">
                     {organization && <CompanyInfoCard organization={organization} />}
                 </div>
             </section>
