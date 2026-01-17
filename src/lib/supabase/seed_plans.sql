@@ -11,16 +11,16 @@ DELETE FROM products WHERE id IN ('prod_starter', 'prod_pro');
 -- 2. Inserir Produto único
 INSERT INTO products (id, name, active, description)
 VALUES 
-    ('prod_batepapo', 'BatePapo Pro', true, 'Plano completo com todos os recursos')
+    ('prod_To0NHc2B5u5D2b', 'BatePapo Pro', true, 'Plano completo com todos os recursos')
 ON CONFLICT (id) DO UPDATE 
 SET name = EXCLUDED.name,
     description = EXCLUDED.description,
     active = EXCLUDED.active;
 
--- 3. Inserir Preço (R$ 150,00/mês = 15000 centavos)
+-- 3. Inserir Preço (R$ 149,90/mês)
 INSERT INTO prices (id, product_id, active, currency, unit_amount, type, interval)
 VALUES 
-    ('price_batepapo_monthly', 'prod_batepapo', true, 'brl', 15000, 'recurring', 'month')
+    ('price_1SqOMzE3jySaqEXCqllhxGsz', 'prod_To0NHc2B5u5D2b', true, 'brl', 14990, 'recurring', 'month')
 ON CONFLICT (id) DO UPDATE 
 SET unit_amount = EXCLUDED.unit_amount,
     active = EXCLUDED.active;
@@ -28,7 +28,7 @@ SET unit_amount = EXCLUDED.unit_amount,
 -- 4. Definir Limites do Plano (usando limites Pro)
 INSERT INTO plan_limits (price_id, max_users, max_contacts, max_pipelines, features)
 VALUES 
-    ('price_batepapo_monthly', 10, 10000, 5, '["10 atendentes", "10.000 contatos", "5 pipelines", "Chat WhatsApp", "Campanhas WhatsApp", "Analytics avançado"]'::jsonb)
+    ('price_1SqOMzE3jySaqEXCqllhxGsz', 10, 10000, 5, '["10 atendentes", "10.000 contatos", "5 pipelines", "Chat WhatsApp", "Campanhas WhatsApp", "Analytics avançado"]'::jsonb)
 ON CONFLICT (price_id) DO UPDATE 
 SET max_users = EXCLUDED.max_users,
     max_contacts = EXCLUDED.max_contacts,

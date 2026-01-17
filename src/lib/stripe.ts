@@ -28,7 +28,7 @@ export const stripe = {
 // Price IDs from environment
 export const PRICES = {
     starter: process.env.STRIPE_PRICE_STARTER || 'price_starter_monthly',
-    pro: process.env.STRIPE_PRICE_PRO || 'price_pro_monthly',
+    pro: process.env.STRIPE_PRICE_PRO || 'price_1SqOMzE3jySaqEXCqllhxGsz',
 } as const
 
 export type PlanType = keyof typeof PRICES

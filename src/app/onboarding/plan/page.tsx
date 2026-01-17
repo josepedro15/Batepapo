@@ -72,7 +72,7 @@ export default function PlanSelectionPage() {
     }
 
     // Determine which plan should be highlighted as popular (highest price or first with > 1 user limit)
-    const popularPlanId = plans.length > 1 
+    const popularPlanId = plans.length > 1
         ? plans.reduce((prev, curr) => curr.price > prev.price ? curr : prev).id
         : plans[0]?.id
 
@@ -94,7 +94,7 @@ export default function PlanSelectionPage() {
                     <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
                     <h2 className="text-xl font-bold text-foreground mb-2">Erro ao carregar planos</h2>
                     <p className="text-muted-foreground mb-4">{error}</p>
-                    <button 
+                    <button
                         onClick={() => { setError(null); setLoadingPlans(true); fetchPlans(); }}
                         className="px-4 py-2 bg-primary text-primary-foreground rounded-lg"
                     >
@@ -162,7 +162,7 @@ export default function PlanSelectionPage() {
 
                                 <div className="mb-6">
                                     <span className="text-4xl font-bold text-foreground">
-                                        R$ {plan.price.toFixed(0)}
+                                        R$ {plan.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </span>
                                     <span className="text-muted-foreground">/mês</span>
                                 </div>
