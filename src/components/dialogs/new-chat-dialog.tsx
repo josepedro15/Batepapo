@@ -19,6 +19,7 @@ interface WhatsAppContact {
     name: string
     phone: string
     profilePicUrl?: string
+    avatar_url?: string // Add avatar_url to match API response
 }
 
 export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDialogProps) {
@@ -42,14 +43,17 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
         try {
             setIsLoadingContacts(true)
 
-            const response = await fetch('/api/contacts/whatsapp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    organization_id: orgId,
-                    page: pageNum,
-                    search: searchTerm
-                })
+            // Calculate query params
+            const params = new URLSearchParams({
+                organization_id: orgId,
+                page: pageNum.toString(),
+                pageSize: '20',
+                search: searchTerm
+            })
+
+            const response = await fetch(`/api/contacts?${params.toString()}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
             })
 
             const data = await response.json()
@@ -65,9 +69,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                     )
 
                     // If we received data but everything was a duplicate, stop pagination
-                    // This prevents infinite loops if the server pagination is inconsistent
                     if (data.contacts.length > 0 && newContacts.length === 0) {
-                        console.warn('Received duplicates loop detected, stopping pagination')
                         setHasMore(false)
                     } else {
                         setHasMore(data.contacts.length === 20)
@@ -79,7 +81,6 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                 const errorData = await response.json().catch(() => ({}))
                 console.error('Contact fetch error:', errorData)
 
-                // If instance not connected/found, just stop trying to load
                 if (pageNum === 1) {
                     setContacts([])
                     if (errorData.error) {
@@ -206,7 +207,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                 {/* Left Side: Contact List */}
                 <div className="w-1/2 border-r border-white/10 flex flex-col bg-slate-950/50">
                     <div className="p-4 border-b border-white/10">
-                        <h3 className="text-sm font-semibold text-slate-300 mb-3">Contatos do WhatsApp</h3>
+                        <h3 className="text-sm font-semibold text-slate-300 mb-3">Meus Contatos</h3>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                             <input
@@ -235,7 +236,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                                         className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors text-left group"
                                     >
                                         <Avatar className="h-10 w-10 border border-white/10">
-                                            <AvatarImage src={contact.profilePicUrl} />
+                                            <AvatarImage src={contact.avatar_url || contact.profilePicUrl} />
                                             <AvatarFallback className="bg-slate-800 text-slate-400">
                                                 <User className="h-5 w-5" />
                                             </AvatarFallback>

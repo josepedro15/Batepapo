@@ -58,10 +58,15 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// GET: List contacts for organization
-export async function GET() {
+// GET: List contacts for organization with pagination and search
+export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient()
+        const url = new URL(request.url)
+        const page = parseInt(url.searchParams.get('page') || '1')
+        const pageSize = parseInt(url.searchParams.get('pageSize') || '20')
+        const search = url.searchParams.get('search') || ''
+
         const { data: { user } } = await supabase.auth.getUser()
 
         if (!user) {
@@ -79,14 +84,36 @@ export async function GET() {
             return NextResponse.json({ error: 'No organization found' }, { status: 404 })
         }
 
-        // Get contacts
-        const { data: contacts } = await supabase
+        // Build query
+        let query = supabase
             .from('contacts')
-            .select('id, name, phone, status, created_at')
+            .select('id, name, phone, status, avatar_url, created_at', { count: 'exact' })
             .eq('organization_id', membership.organization_id)
-            .order('created_at', { ascending: false })
 
-        return NextResponse.json({ contacts: contacts || [] })
+        // Apply search filter
+        if (search) {
+            query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
+        }
+
+        // Apply pagination
+        const from = (page - 1) * pageSize
+        const to = from + pageSize - 1
+
+        const { data: contacts, count, error } = await query
+            .order('created_at', { ascending: false })
+            .range(from, to)
+
+        if (error) {
+            console.error('Error fetching contacts:', error)
+            return NextResponse.json({ error: 'Error fetching contacts' }, { status: 500 })
+        }
+
+        return NextResponse.json({
+            contacts: contacts || [],
+            total: count || 0,
+            page,
+            totalPages: count ? Math.ceil(count / pageSize) : 0
+        })
     } catch (error) {
         console.error('Error in GET /api/contacts:', error)
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
