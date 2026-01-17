@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
 import { assignChat, sendMessage, finishChat, reopenChat, getMessages, getNewMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact, deleteConversation, updateContactName } from '@/app/dashboard/chat/actions'
+import { getQuickMessages } from '@/app/dashboard/quick-messages/actions'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight, Search, MoreVertical, Trash2, Edit, Check } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight, Search, MoreVertical, Trash2, Edit, Check, FileText, Video, Download, Play } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -81,6 +82,43 @@ export function ChatInterface({
     const [editingContactId, setEditingContactId] = useState<string | null>(null)
     const [editingName, setEditingName] = useState('')
 
+    // Quick Messages State
+    const [quickMessages, setQuickMessages] = useState<any[]>([])
+    const [showQuickCommands, setShowQuickCommands] = useState(false)
+    const [filteredCommands, setFilteredCommands] = useState<any[]>([])
+
+    useEffect(() => {
+        if (orgId) {
+            getQuickMessages(orgId).then(msgs => {
+                if (msgs) setQuickMessages(msgs)
+            })
+        }
+    }, [orgId])
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value
+        setInputText(val)
+
+        // Simple slash command detection: starts with /
+        if (val.startsWith('/')) {
+            const query = val.slice(1).toLowerCase()
+            const matches = quickMessages.filter(msg =>
+                msg.title.toLowerCase().includes(query) ||
+                msg.content.toLowerCase().includes(query)
+            )
+            setFilteredCommands(matches)
+            setShowQuickCommands(matches.length > 0)
+        } else {
+            setShowQuickCommands(false)
+        }
+    }
+
+    const selectQuickMessage = (content: string) => {
+        setInputText(content)
+        setShowQuickCommands(false)
+        // Optional: auto-focus back to input if needed, but react state update should keep focus
+    }
+
     // Contact lists state (for real-time updates)
     const [myChats, setMyChats] = useState<any[]>(initialMyChats || [])
     const [awaitingChats, setAwaitingChats] = useState<any[]>(initialAwaitingChats || [])
@@ -135,7 +173,7 @@ export function ChatInterface({
 
     // Media State
     const [isRecording, setIsRecording] = useState(false)
-    const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
+    const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' | 'video' | 'document' }[]>([])
 
     // Gallery State
     const [galleryImages, setGalleryImages] = useState<string[]>([])
@@ -339,18 +377,21 @@ export function ChatInterface({
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const newFiles = Array.from(e.target.files).filter(file => file.type.startsWith('image/'))
+            // Accept images, videos, and documents
+            const newFiles = Array.from(e.target.files)
 
-            if (newFiles.length === 0) {
-                toast.error('Apenas imagens são permitidas')
-                return
-            }
+            const newMediaItems = newFiles.map(file => {
+                let type: 'image' | 'video' | 'document' = 'document'
 
-            const newMediaItems = newFiles.map(file => ({
-                file,
-                preview: URL.createObjectURL(file),
-                type: 'image' as const
-            }))
+                if (file.type.startsWith('image/')) type = 'image'
+                else if (file.type.startsWith('video/')) type = 'video'
+
+                return {
+                    file,
+                    preview: type === 'image' || type === 'video' ? URL.createObjectURL(file) : '', // Video also has URL preview
+                    type
+                }
+            })
 
             setMediaFiles(prev => [...prev, ...newMediaItems])
         }
@@ -716,20 +757,43 @@ export function ChatInterface({
         return isActive ? colors[tabId]?.active : colors[tabId]?.inactive
     }
 
+    // Helper to format date for separator
+    const formatDateForSeparator = (dateString: string) => {
+        const date = new Date(dateString)
+        const now = new Date()
+        const yesterday = new Date(now)
+        yesterday.setDate(now.getDate() - 1)
+
+        const isToday = date.getDate() === now.getDate() &&
+            date.getMonth() === now.getMonth() &&
+            date.getFullYear() === now.getFullYear()
+
+        const isYesterday = date.getDate() === yesterday.getDate() &&
+            date.getMonth() === yesterday.getMonth() &&
+            date.getFullYear() === yesterday.getFullYear()
+
+        if (isToday) return 'Hoje'
+        if (isYesterday) return 'Ontem'
+
+        return date.toLocaleDateString('pt-BR')
+    }
+
     // Group consecutive image messages from same sender
     type GroupedMessage = {
         type: 'single'
         message: Message
+        createdAt: string // Normalized for sorting/display
     } | {
         type: 'image-group'
         senderType: 'user' | 'contact' | 'system'
         images: string[]
         firstMessageId: string
+        createdAt: string
     }
 
     const groupedMessages = useMemo<GroupedMessage[]>(() => {
         const result: GroupedMessage[] = []
-        let currentImageGroup: { senderType: 'user' | 'contact' | 'system'; images: string[]; firstMessageId: string } | null = null
+        let currentImageGroup: { senderType: 'user' | 'contact' | 'system'; images: string[]; firstMessageId: string; createdAt: string } | null = null
 
         for (const message of messages) {
             if (message.media_type === 'image' && message.media_url) {
@@ -745,16 +809,17 @@ export function ChatInterface({
                     currentImageGroup = {
                         senderType: message.sender_type,
                         images: [message.media_url],
-                        firstMessageId: message.id
+                        firstMessageId: message.id,
+                        createdAt: message.created_at
                     }
                 }
             } else {
-                // Non-image message, close any open image group
+                // Non-image message (text, video, audio, document), close any open image group
                 if (currentImageGroup) {
                     result.push({ type: 'image-group', ...currentImageGroup })
                     currentImageGroup = null
                 }
-                result.push({ type: 'single', message })
+                result.push({ type: 'single', message, createdAt: message.created_at })
             }
         }
 
@@ -1283,38 +1348,24 @@ export function ChatInterface({
                                 </div>
                             ) : (
                                 groupedMessages.map((item, index) => {
-                                    // Get timestamp from current item
-                                    const currentTimestamp = item.type === 'image-group' 
-                                        ? messages.find(m => m.id === item.firstMessageId)?.created_at 
-                                        : item.message.created_at
-                                    
-                                    // Get timestamp from previous item for date comparison
                                     const prevItem = index > 0 ? groupedMessages[index - 1] : null
-                                    const prevTimestamp = prevItem 
-                                        ? (prevItem.type === 'image-group' 
-                                            ? messages.find(m => m.id === prevItem.firstMessageId)?.created_at 
-                                            : prevItem.message.created_at)
-                                        : null
+                                    const showDateSeparator = !prevItem ||
+                                        new Date(item.createdAt).toDateString() !== new Date(prevItem.createdAt).toDateString()
 
-                                    // Check if we need to show a date separator
-                                    const showDateSeparator = currentTimestamp && (
-                                        index === 0 || 
-                                        (prevTimestamp && getDateKey(currentTimestamp) !== getDateKey(prevTimestamp))
-                                    )
+                                    return (
+                                        <div key={item.type === 'single' ? item.message.id : item.firstMessageId}>
+                                            {showDateSeparator && (
+                                                <div className="flex justify-center my-6">
+                                                    <span className="text-xs font-bold text-muted-foreground/60 bg-muted/30 px-3 py-1 rounded-full uppercase tracking-wider">
+                                                        {formatDateForSeparator(item.createdAt)}
+                                                    </span>
+                                                </div>
+                                            )}
 
-                                    if (item.type === 'image-group') {
-                                        // Render grouped images
-                                        return (
-                                            <div key={item.firstMessageId}>
-                                                {showDateSeparator && currentTimestamp && (
-                                                    <div className="flex items-center justify-center my-4">
-                                                        <div className="px-4 py-1.5 bg-muted/50 rounded-full text-xs font-medium text-muted-foreground border border-border/30">
-                                                            {formatDateLabel(currentTimestamp)}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                            {item.type === 'image-group' ? (
                                                 <div
-                                                    className={cn("flex", item.senderType === 'user' ? "justify-end" : "justify-start")}
+                                                    className={cn("flex animate-fade-in", item.senderType === 'user' ? "justify-end" : "justify-start")}
+                                                    style={{ animationDelay: `${index * 20}ms` }}
                                                 >
                                                     <div
                                                         className={cn(
@@ -1331,57 +1382,78 @@ export function ChatInterface({
                                                         />
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )
-                                    } else {
-                                        // Render single message (non-image or audio)
-                                        const message = item.message
-                                        return (
-                                            <div key={message.id}>
-                                                {showDateSeparator && (
-                                                    <div className="flex items-center justify-center my-4">
-                                                        <div className="px-4 py-1.5 bg-muted/50 rounded-full text-xs font-medium text-muted-foreground border border-border/30">
-                                                            {formatDateLabel(message.created_at)}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                            ) : (
+                                                // Render single message (non-image or audio)
                                                 <div
-                                                    className={cn("flex", message.sender_type === 'user' ? "justify-end" : "justify-start")}
+                                                    className={cn("flex animate-fade-in", item.message.sender_type === 'user' ? "justify-end" : "justify-start")}
+                                                    style={{ animationDelay: `${index * 20}ms` }}
                                                 >
                                                     <div
                                                         className={cn(
                                                             "p-4 rounded-2xl max-w-[75%] shadow-sm transition-all duration-200",
-                                                            message.sender_type === 'user'
+                                                            item.message.sender_type === 'user'
                                                                 ? 'bg-primary text-primary-foreground rounded-tr-md'
                                                                 : 'bg-card text-foreground rounded-tl-md border border-border/50'
                                                         )}
                                                     >
-                                                        {message.body && message.media_type !== 'audio' && (
-                                                            <p className="leading-relaxed">{message.body}</p>
+                                                        {item.message.body && item.message.media_type !== 'audio' && (
+                                                            <p className="leading-relaxed">{item.message.body}</p>
                                                         )}
 
-                                                        {message.media_type === 'audio' && message.media_url && (
+                                                        {item.message.media_type === 'audio' && item.message.media_url && (
                                                             <AudioPlayer
-                                                                src={message.media_url}
-                                                                isFromUser={message.sender_type === 'user'}
+                                                                src={item.message.media_url}
+                                                                isFromUser={item.message.sender_type === 'user'}
                                                             />
+                                                        )}
+
+                                                        {item.message.media_type === 'video' && item.message.media_url && (
+                                                            <div className="rounded-lg overflow-hidden max-w-[280px]">
+                                                                <video controls src={item.message.media_url} className="w-full" />
+                                                            </div>
+                                                        )}
+
+                                                        {item.message.media_type === 'document' && item.message.media_url && (
+                                                            <a
+                                                                href={item.message.media_url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={cn(
+                                                                    "flex items-center gap-3 p-3 rounded-xl border transition-colors max-w-[280px]",
+                                                                    item.message.sender_type === 'user'
+                                                                        ? "bg-primary-foreground/10 border-primary-foreground/20 hover:bg-primary-foreground/20"
+                                                                        : "bg-muted hover:bg-muted/80 border-border/50"
+                                                                )}
+                                                            >
+                                                                <div className={cn(
+                                                                    "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                                                                    item.message.sender_type === 'user' ? "bg-primary-foreground/20" : "bg-primary/10 text-primary"
+                                                                )}>
+                                                                    <FileText className="h-5 w-5" />
+                                                                </div>
+                                                                <div className="overflow-hidden">
+                                                                    <p className="font-medium text-sm truncate">{item.message.body?.replace('Arquivo: ', '') || 'Documento'}</p>
+                                                                    <p className="text-[10px] opacity-70 uppercase">Documento</p>
+                                                                </div>
+                                                                <Download className="h-4 w-4 opacity-70 ml-auto" />
+                                                            </a>
                                                         )}
 
                                                         <div className="flex items-center justify-end gap-1 mt-1">
                                                             <span className={cn(
                                                                 "text-[10px]",
-                                                                message.sender_type === 'user'
+                                                                item.message.sender_type === 'user'
                                                                     ? "text-primary-foreground/70"
                                                                     : "text-muted-foreground"
                                                             )}>
-                                                                {formatTime(message.created_at)}
+                                                                {formatTime(item.message.created_at)}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )
-                                    }
+                                            )}
+                                        </div>
+                                    )
                                 })
                             )}
                             <div ref={messagesEndRef} />
@@ -1433,7 +1505,8 @@ export function ChatInterface({
                                         type="file"
                                         ref={fileInputRef}
                                         className="hidden"
-                                        accept="image/*"
+                                        // Accept images, videos, pdfs, docs, spreadsheets, text
+                                        accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain"
                                         multiple
                                         onChange={handleFileSelect}
                                     />
@@ -1476,6 +1549,18 @@ export function ChatInterface({
                                                                 alt={`Preview ${index}`}
                                                                 className="h-12 w-12 object-cover rounded-lg border border-border/50"
                                                             />
+                                                        ) : media.type === 'video' ? (
+                                                            <div className="relative h-12 w-12 rounded-lg border border-border/50 overflow-hidden bg-black/10">
+                                                                <video src={media.preview} className="h-full w-full object-cover" />
+                                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                                                    <Play className="h-4 w-4 text-white fill-white" />
+                                                                </div>
+                                                            </div>
+                                                        ) : media.type === 'document' ? (
+                                                            <div className="flex flex-col items-center justify-center h-12 w-16 bg-primary/10 rounded-lg border border-primary/30 p-1">
+                                                                <FileText className="h-4 w-4 text-primary mb-0.5" />
+                                                                <span className="text-[8px] text-primary truncate w-full text-center">{media.file.name.slice(0, 8)}...</span>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex items-center justify-center h-12 w-12 bg-primary/10 rounded-lg border border-primary/30">
                                                                 <Mic className="h-5 w-5 text-primary" />
@@ -1500,13 +1585,30 @@ export function ChatInterface({
                                                 </button>
                                             </div>
                                         ) : (
-                                            <input
-                                                value={inputText}
-                                                onChange={e => setInputText(e.target.value)}
-                                                placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
-                                                disabled={isRecording}
-                                                className="w-full bg-muted/50 border border-border rounded-xl px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
-                                            />
+                                            <>
+                                                {showQuickCommands && (
+                                                    <div className="absolute bottom-full left-0 w-full mb-2 bg-popover border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto z-10 p-1">
+                                                        {filteredCommands.map((cmd) => (
+                                                            <button
+                                                                key={cmd.id}
+                                                                type="button"
+                                                                onClick={() => selectQuickMessage(cmd.content)}
+                                                                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-accent hover:text-accent-foreground flex flex-col gap-1 transition-colors"
+                                                            >
+                                                                <span className="font-bold font-mono text-primary text-xs">/{cmd.title}</span>
+                                                                <span className="text-muted-foreground line-clamp-1 text-xs">{cmd.content}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <input
+                                                    value={inputText}
+                                                    onChange={handleInputChange}
+                                                    placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem... (Use / para mensagens rápidas)"}
+                                                    disabled={isRecording}
+                                                    className="w-full bg-muted/50 border border-border rounded-xl px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all duration-200"
+                                                />
+                                            </>
                                         )}
                                     </div>
 
