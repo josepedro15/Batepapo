@@ -128,7 +128,99 @@ export async function generateAIResponse(messages: Message[]) {
         // 4. Log Usage
         await supabase.from('ai_usage_logs').insert({
             organization_id: orgId,
-            user_id: user.id
+            user_id: user.id,
+            feature: 'chat_suggestion'
+        })
+
+        return { success: true, suggestion }
+
+    } catch (error: any) {
+        console.error('OpenAI API Error:', error)
+        return { error: `Erro na API da IA: ${error.message}` }
+    }
+}
+
+export async function generateCampaignCopy(targetAudience: string, messageInfo: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { error: 'Usuário não autenticado.' }
+    }
+
+    // 1. Get Organization ID
+    const { data: member } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .single()
+
+    if (!member?.organization_id) {
+        return { error: 'Organização não encontrada.' }
+    }
+
+    const orgId = member.organization_id
+
+    // 2. Check Daily Limit (5 requests / day) for Campaigns
+    const startOfDay = new Date()
+    startOfDay.setUTCHours(0, 0, 0, 0)
+
+    const { count, error: countError } = await supabase
+        .from('ai_usage_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .eq('feature', 'campaign_copy')
+        .gte('created_at', startOfDay.toISOString())
+
+    if (countError) {
+        console.error('Error checking AI usage limit:', countError)
+        return { error: 'Erro ao verificar limite de uso.' }
+    }
+
+    if (count !== null && count >= 5) {
+        return { error: 'Limite diário de 5 gerações de campanha atingido.' }
+    }
+
+    // 3. Prepare Prompt
+    const systemPrompt = `Você é um especialista em Copywriting para Marketing e Vendas (CRM).
+    Seu objetivo é criar uma mensagem de campanha persuasiva para envio em massa (WhatsApp ou Email).
+    
+    Público Alvo: ${targetAudience}
+    Informações da Mensagem: ${messageInfo}
+    
+    Diretrizes:
+    - Crie uma mensagem curta, direta e engajadora.
+    - Foque na conversão ou na ação desejada.
+    - Use emojis com moderação para tornar a leitura leve.
+    - Se for WhatsApp, evite textos muito longos.
+    - Responda apenas com o texto da mensagem sugerida.`
+
+    // Lazy init OpenAI
+    const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    })
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt }
+            ] as any,
+            temperature: 0.8, // Slightly higher for creativity
+            max_tokens: 500
+        })
+
+        const suggestion = response.choices[0]?.message?.content
+
+        if (!suggestion) {
+            return { error: 'A IA não retornou nenhuma sugestão.' }
+        }
+
+        // 4. Log Usage
+        await supabase.from('ai_usage_logs').insert({
+            organization_id: orgId,
+            user_id: user.id,
+            feature: 'campaign_copy'
         })
 
         return { success: true, suggestion }
@@ -143,7 +235,7 @@ export async function getRemainingAIRequests() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) return 0 // Fallback
+    if (!user) return 0
 
     const { data: member } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
     if (!member) return 0
@@ -155,8 +247,32 @@ export async function getRemainingAIRequests() {
         .from('ai_usage_logs')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', member.organization_id)
+        .eq('feature', 'chat_suggestion') // Only count chat suggestions
         .gte('created_at', startOfDay.toISOString())
 
     const usage = count || 0
     return Math.max(0, 40 - usage)
+}
+
+export async function getRemainingCampaignRequests() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) return 0
+
+    const { data: member } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
+    if (!member) return 0
+
+    const startOfDay = new Date()
+    startOfDay.setUTCHours(0, 0, 0, 0)
+
+    const { count } = await supabase
+        .from('ai_usage_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', member.organization_id)
+        .eq('feature', 'campaign_copy')
+        .gte('created_at', startOfDay.toISOString())
+
+    const usage = count || 0
+    return Math.max(0, 5 - usage)
 }

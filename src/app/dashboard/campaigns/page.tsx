@@ -15,8 +15,10 @@ import {
     List as ListIcon,
     Settings2,
     Loader2,
-    RefreshCw
+    RefreshCw,
+    Sparkles
 } from 'lucide-react'
+import { AICampaignAssistant } from '@/components/campaigns/ai-campaign-assistant'
 import { cn } from '@/lib/utils'
 import {
     MessageBuilder,
@@ -48,6 +50,7 @@ export default function CampaignsPage() {
     // State
     const [activeTab, setActiveTab] = useState<TabType>('new')
     const [isPending, startTransition] = useTransition()
+    const [showAIAssistant, setShowAIAssistant] = useState(false)
 
     // Form state
     const [campaignName, setCampaignName] = useState('')
@@ -112,12 +115,12 @@ export default function CampaignsPage() {
 
     // Poll for active campaigns status updates
     const pollingRef = useRef<NodeJS.Timeout | null>(null)
-    
+
     // Memoize check for active campaigns to avoid dependency issues
     const hasActiveCampaigns = campaigns.some(
         c => c.status === 'sending' || c.status === 'scheduled'
     )
-    
+
     useEffect(() => {
         // Only poll when on list tab and there are active campaigns
         if (activeTab === 'list' && hasActiveCampaigns) {
@@ -131,13 +134,13 @@ export default function CampaignsPage() {
                     console.error('Error polling campaign status:', err)
                 }
             }
-            
+
             // Poll every 5 seconds
             pollingRef.current = setInterval(pollStatus, 5000)
-            
+
             // Also poll immediately on first render
             pollStatus()
-            
+
             return () => {
                 if (pollingRef.current) {
                     clearInterval(pollingRef.current)
@@ -295,6 +298,13 @@ export default function CampaignsPage() {
 
     return (
         <div className="min-h-[calc(100vh-6rem)] space-y-8">
+            {/* AI Assistant Sidebar */}
+            {showAIAssistant && (
+                <AICampaignAssistant
+                    onClose={() => setShowAIAssistant(false)}
+                />
+            )}
+
             {/* Header com gradiente decorativo */}
             <div className="relative overflow-hidden rounded-2xl glass-heavy p-8">
                 <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -314,39 +324,50 @@ export default function CampaignsPage() {
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex items-center gap-2">
+            {/* Tabs & Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('new')}
+                        className={cn(
+                            "flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all",
+                            activeTab === 'new'
+                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                    >
+                        <Plus className="h-5 w-5" />
+                        Nova Campanha
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab('list')
+                            loadCampaigns()
+                        }}
+                        className={cn(
+                            "flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all",
+                            activeTab === 'list'
+                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                    >
+                        <ListIcon className="h-5 w-5" />
+                        Minhas Campanhas
+                        {campaigns.length > 0 && (
+                            <span className="ml-1 px-2 py-0.5 bg-primary-foreground/20 rounded-full text-xs">
+                                {campaigns.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
+
+                {/* AI Button */}
                 <button
-                    onClick={() => setActiveTab('new')}
-                    className={cn(
-                        "flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all",
-                        activeTab === 'new'
-                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
+                    onClick={() => setShowAIAssistant(true)}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold transition-all bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 active:scale-95 translate-y-0 hover:-translate-y-0.5"
                 >
-                    <Plus className="h-5 w-5" />
-                    Nova Campanha
-                </button>
-                <button
-                    onClick={() => {
-                        setActiveTab('list')
-                        loadCampaigns()
-                    }}
-                    className={cn(
-                        "flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all",
-                        activeTab === 'list'
-                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                >
-                    <ListIcon className="h-5 w-5" />
-                    Minhas Campanhas
-                    {campaigns.length > 0 && (
-                        <span className="ml-1 px-2 py-0.5 bg-primary-foreground/20 rounded-full text-xs">
-                            {campaigns.length}
-                        </span>
-                    )}
+                    <Sparkles className="h-4 w-4" />
+                    IA Copywriter
                 </button>
             </div>
 
