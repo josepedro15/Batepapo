@@ -122,8 +122,8 @@ export async function middleware(request: NextRequest) {
         // Role-based route protection
         const rolePermissions: Record<string, string[]> = {
             attendant: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/quick-messages'],
-            manager: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts', '/dashboard/quick-messages'],
-            owner: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts', '/dashboard/settings', '/dashboard/admin', '/dashboard/quick-messages'],
+            manager: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts', '/dashboard/quick-messages', '/dashboard/automatic-messages'],
+            owner: ['/dashboard', '/dashboard/kanban', '/dashboard/chat', '/dashboard/campaigns', '/dashboard/contacts', '/dashboard/settings', '/dashboard/admin', '/dashboard/quick-messages', '/dashboard/automatic-messages'],
         }
 
         const userRole = membership.role || 'attendant'
