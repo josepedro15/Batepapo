@@ -326,7 +326,7 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
     if (!user) throw new Error('Unauthorized')
 
     const file = formData.get('file') as File
-    const mediaType = formData.get('type') as 'audio' | 'image'
+    const mediaType = formData.get('type') as 'audio' | 'image' | 'video' | 'document'
 
     if (!file) throw new Error('No file provided')
 
@@ -338,7 +338,16 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
     const adminSupabase = createAdminClient()
     if (!adminSupabase) throw new Error('Server misconfiguration: No Admin Client')
 
-    const ext = file.name.split('.').pop() || (mediaType === 'image' ? 'jpg' : 'webm')
+    // Determine extension
+    let ext = file.name.split('.').pop()
+    if (!ext || ext === file.name) {
+        // Fallback extensions if original name doesn't have one
+        if (mediaType === 'image') ext = 'jpg'
+        else if (mediaType === 'audio') ext = 'webm' // Recorded audio usually webm
+        else if (mediaType === 'video') ext = 'mp4'
+        else if (mediaType === 'document') ext = 'pdf' // Weak fallback, but better than nothing
+    }
+
     const fileName = `${contactId}/${Date.now()}.${ext}`
 
     console.log('[sendMedia] Uploading to storage:', fileName)
@@ -365,13 +374,22 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
     const mediaUrl = publicUrlData.publicUrl
     console.log('[sendMedia] Public URL generated:', mediaUrl)
 
+    // Generate body text based on type
+    let bodyText = ''
+    switch (mediaType) {
+        case 'audio': bodyText = 'Áudio enviado'; break;
+        case 'image': bodyText = 'Imagem enviada'; break;
+        case 'video': bodyText = 'Vídeo enviado'; break;
+        case 'document': bodyText = `Arquivo: ${file.name}`; break;
+    }
+
     // 3. Insert message with 'sending' status
     const { data: msg, error: msgError } = await supabase.from('messages').insert({
         organization_id: orgId,
         contact_id: contactId,
         sender_type: 'user',
         sender_id: user.id,
-        body: mediaType === 'audio' ? 'Áudio enviado' : 'Imagem enviada',
+        body: bodyText,
         media_url: mediaUrl,
         media_type: mediaType,
         status: 'sending'
@@ -406,16 +424,28 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
 
         let response
         if (mediaType === 'audio') {
+            // Assume it's a PTT (mic recording)
             response = await uazapi.sendVoiceMessage(
                 instance.instance_token,
                 contact.phone,
                 mediaUrl
             )
         } else {
-            response = await uazapi.sendImageMessage(
+            // Map our type to UAZAPI type
+            // our 'document' -> uazapi 'document'
+            // our 'video' -> uazapi 'video'
+            // our 'image' -> uazapi 'image'
+
+            // Note: UAZAPI sendMedia function signature: 
+            // sendMedia(token, phone, type, url, caption)
+            const uazapiType = mediaType as 'image' | 'video' | 'document'
+
+            response = await uazapi.sendMedia(
                 instance.instance_token,
                 contact.phone,
-                mediaUrl
+                uazapiType,
+                mediaUrl,
+                mediaType === 'image' || mediaType === 'video' ? '' : file.name // Caption if needed
             )
         }
 

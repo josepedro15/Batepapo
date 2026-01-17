@@ -7,7 +7,7 @@ import { assignChat, sendMessage, finishChat, reopenChat, getMessages, getNewMes
 import { getQuickMessages } from '@/app/dashboard/quick-messages/actions'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight, Search, MoreVertical, Trash2, Edit, Check } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight, Search, MoreVertical, Trash2, Edit, Check, FileText, Video, Download, Play } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -134,7 +134,7 @@ export function ChatInterface({
 
     // Media State
     const [isRecording, setIsRecording] = useState(false)
-    const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
+    const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' | 'video' | 'document' }[]>([])
 
     // Gallery State
     const [galleryImages, setGalleryImages] = useState<string[]>([])
@@ -333,18 +333,21 @@ export function ChatInterface({
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const newFiles = Array.from(e.target.files).filter(file => file.type.startsWith('image/'))
+            // Accept images, videos, and documents
+            const newFiles = Array.from(e.target.files)
 
-            if (newFiles.length === 0) {
-                toast.error('Apenas imagens são permitidas')
-                return
-            }
+            const newMediaItems = newFiles.map(file => {
+                let type: 'image' | 'video' | 'document' = 'document'
 
-            const newMediaItems = newFiles.map(file => ({
-                file,
-                preview: URL.createObjectURL(file),
-                type: 'image' as const
-            }))
+                if (file.type.startsWith('image/')) type = 'image'
+                else if (file.type.startsWith('video/')) type = 'video'
+
+                return {
+                    file,
+                    preview: type === 'image' || type === 'video' ? URL.createObjectURL(file) : '', // Video also has URL preview
+                    type
+                }
+            })
 
             setMediaFiles(prev => [...prev, ...newMediaItems])
         }
@@ -742,7 +745,7 @@ export function ChatInterface({
                     }
                 }
             } else {
-                // Non-image message, close any open image group
+                // Non-image message (text, video, audio, document), close any open image group
                 if (currentImageGroup) {
                     result.push({ type: 'image-group', ...currentImageGroup })
                     currentImageGroup = null
@@ -1319,6 +1322,38 @@ export function ChatInterface({
                                                             />
                                                         )}
 
+                                                        {item.message.media_type === 'video' && item.message.media_url && (
+                                                            <div className="rounded-lg overflow-hidden max-w-[280px]">
+                                                                <video controls src={item.message.media_url} className="w-full" />
+                                                            </div>
+                                                        )}
+
+                                                        {item.message.media_type === 'document' && item.message.media_url && (
+                                                            <a
+                                                                href={item.message.media_url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={cn(
+                                                                    "flex items-center gap-3 p-3 rounded-xl border transition-colors max-w-[280px]",
+                                                                    item.message.sender_type === 'user'
+                                                                        ? "bg-primary-foreground/10 border-primary-foreground/20 hover:bg-primary-foreground/20"
+                                                                        : "bg-muted hover:bg-muted/80 border-border/50"
+                                                                )}
+                                                            >
+                                                                <div className={cn(
+                                                                    "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                                                                    item.message.sender_type === 'user' ? "bg-primary-foreground/20" : "bg-primary/10 text-primary"
+                                                                )}>
+                                                                    <FileText className="h-5 w-5" />
+                                                                </div>
+                                                                <div className="overflow-hidden">
+                                                                    <p className="font-medium text-sm truncate">{item.message.body?.replace('Arquivo: ', '') || 'Documento'}</p>
+                                                                    <p className="text-[10px] opacity-70 uppercase">Documento</p>
+                                                                </div>
+                                                                <Download className="h-4 w-4 opacity-70 ml-auto" />
+                                                            </a>
+                                                        )}
+
                                                         <div className="flex items-center justify-end gap-1 mt-1">
                                                             <span className={cn(
                                                                 "text-[10px]",
@@ -1380,7 +1415,8 @@ export function ChatInterface({
                                         type="file"
                                         ref={fileInputRef}
                                         className="hidden"
-                                        accept="image/*"
+                                        // Accept images, videos, pdfs, docs, spreadsheets, text
+                                        accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain"
                                         multiple
                                         onChange={handleFileSelect}
                                     />
@@ -1423,6 +1459,18 @@ export function ChatInterface({
                                                                 alt={`Preview ${index}`}
                                                                 className="h-12 w-12 object-cover rounded-lg border border-border/50"
                                                             />
+                                                        ) : media.type === 'video' ? (
+                                                            <div className="relative h-12 w-12 rounded-lg border border-border/50 overflow-hidden bg-black/10">
+                                                                <video src={media.preview} className="h-full w-full object-cover" />
+                                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                                                    <Play className="h-4 w-4 text-white fill-white" />
+                                                                </div>
+                                                            </div>
+                                                        ) : media.type === 'document' ? (
+                                                            <div className="flex flex-col items-center justify-center h-12 w-16 bg-primary/10 rounded-lg border border-primary/30 p-1">
+                                                                <FileText className="h-4 w-4 text-primary mb-0.5" />
+                                                                <span className="text-[8px] text-primary truncate w-full text-center">{media.file.name.slice(0, 8)}...</span>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex items-center justify-center h-12 w-12 bg-primary/10 rounded-lg border border-primary/30">
                                                                 <Mic className="h-5 w-5 text-primary" />
