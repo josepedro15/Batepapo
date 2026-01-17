@@ -27,7 +27,13 @@ export default async function AutomaticMessagesPage() {
 
     if (!organizationId) return <div>Organização não encontrada</div>
 
-    const rules = await getAutomaticMessageRules(organizationId)
+    let rules: any[] = []
+    try {
+        rules = await getAutomaticMessageRules(organizationId) || []
+    } catch (error) {
+        console.error('Error fetching automatic message rules:', error)
+        // Table might not exist yet, show empty state
+    }
 
     return (
         <div className="container mx-auto py-10 space-y-8">
