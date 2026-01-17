@@ -7,7 +7,8 @@ import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-ca
 import { AISettingsCard } from '@/components/settings/ai-settings-card'
 import { MessageSettingsCard } from '@/components/settings/message-settings-card'
 import { SubscriptionCard } from '@/components/settings/subscription-card'
-import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound, CreditCard } from 'lucide-react'
+import { CompanyInfoCard } from '@/components/settings/company-info-card'
+import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound, CreditCard, Building2 } from 'lucide-react'
 
 export default async function SettingsPage() {
     const supabase = await createClient()
@@ -17,6 +18,13 @@ export default async function SettingsPage() {
     // Fetch API Keys
     const { data: membership } = await supabase.from('organization_members').select('organization_id').eq('user_id', user.id).single()
     const { data: keys } = await supabase.from('api_keys').select('*').eq('organization_id', membership?.organization_id)
+
+    // Fetch Organization Details
+    const { data: organization } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', membership?.organization_id)
+        .single()
 
     // Fetch Team Members
     const { data: members } = await supabase
@@ -76,6 +84,19 @@ export default async function SettingsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Seção: Informações do Negócio (NOVO) */}
+            <section className="animate-fade-in" style={{ animationDelay: '0ms' }}>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-primary" />
+                    </div>
+                    <h2 className="text-headline text-foreground">Informações do Negócio</h2>
+                </div>
+                <div className="max-w-3xl">
+                    {organization && <CompanyInfoCard organization={organization} />}
+                </div>
+            </section>
 
             {/* Seção: Assinatura (NOVO) */}
             <section className="animate-fade-in" style={{ animationDelay: '50ms' }}>

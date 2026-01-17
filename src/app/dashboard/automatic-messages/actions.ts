@@ -83,19 +83,49 @@ export async function generateAIResponse(params: {
             throw new Error('OpenAI API Key not configured')
         }
 
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        let companyContext = ''
+
+        if (user) {
+            const { data: membership } = await supabase
+                .from('organization_members')
+                .select('organization_id, organizations!inner(name, website, description, instagram, facebook, linkedin, address)')
+                .eq('user_id', user.id)
+                .single()
+
+            if (membership?.organizations) {
+                const org = membership.organizations as any
+                companyContext = `
+DADOS DA EMPRESA (Use isso para contextualizar a resposta):
+Nome: ${org.name}
+Descrição do Negócio: ${org.description || 'Não informado'}
+Site: ${org.website || 'Não informado'}
+Endereço: ${org.address || 'Não informado'}
+Instagram: ${org.instagram || 'Não informado'}
+Facebook: ${org.facebook || 'Não informado'}
+LinkedIn: ${org.linkedin || 'Não informado'}
+`
+            }
+        }
+
         const openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
         })
 
         const systemPrompt = `Você é um assistente especializado em criar mensagens automáticas para WhatsApp.
-        
+
+${companyContext}
+
 Contexto da Regra (Horário): ${params.startTime} às ${params.endTime}
 Instruções/Dicas do Usuário: ${params.tips}
 
 Diretrizes:
 - Crie uma mensagem curta e cordial.
-- Se a loja estiver fechada ou em pausa, sugira verificar as redes sociais.
+- Se a loja estiver fechada ou em pausa, sugira verificar as redes sociais (se disponíveis).
 - Se for horário comercial, convide para o atendimento.
+- Incorpore o tom de voz descrito na descrição da empresa, se houver.
 - Use emojis apropriados.
 - Retorne apenas o texto da mensagem.`
 
@@ -103,7 +133,7 @@ Diretrizes:
             model: 'gpt-4o-mini',
             messages: [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: 'Gere a mensagem.' } // Trigger generic user message to start generation
+                { role: 'user', content: 'Gere a mensagem.' }
             ],
             temperature: 0.7,
             max_tokens: 300,

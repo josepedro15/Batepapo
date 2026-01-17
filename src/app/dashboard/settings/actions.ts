@@ -478,3 +478,45 @@ export async function getAISettings() {
     const { data } = await supabase.from('ai_settings').select('*').eq('organization_id', membership.organization_id).single()
     return data
 }
+
+// --- Organization Settings Actions ---
+
+export async function updateOrganizationSettings(formData: FormData) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: membership } = await supabase.from('organization_members').select('organization_id, role').eq('user_id', user.id).single()
+
+    if (!membership || !['owner', 'manager'].includes(membership.role)) {
+        return { error: 'Apenas gestores podem editar configurações da empresa.' }
+    }
+
+    const name = formData.get('name') as string
+    const website = formData.get('website') as string
+    const description = formData.get('description') as string
+    const instagram = formData.get('instagram') as string
+    const facebook = formData.get('facebook') as string
+    const linkedin = formData.get('linkedin') as string
+    const address = formData.get('address') as string
+
+    const { error } = await supabase
+        .from('organizations')
+        .update({
+            name,
+            website,
+            description,
+            instagram,
+            facebook,
+            linkedin,
+            address
+        })
+        .eq('id', membership.organization_id)
+
+    if (error) {
+        return { error: error.message }
+    }
+
+    revalidatePath('/dashboard/settings')
+    return { success: true }
+}
