@@ -878,9 +878,19 @@ export async function getContact(contactId: string) {
 
 export async function deleteConversation(contactId: string) {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    // Delete all messages for this contact first
-    const { error: messagesError } = await supabase
+    if (!user) {
+        throw new Error('Unauthorized')
+    }
+
+    const adminClient = createAdminClient()
+    if (!adminClient) {
+        throw new Error('Server configuration error: Admin client not available')
+    }
+
+    // Delete all messages for this contact first using admin client
+    const { error: messagesError } = await adminClient
         .from('messages')
         .delete()
         .eq('contact_id', contactId)
@@ -890,8 +900,8 @@ export async function deleteConversation(contactId: string) {
         throw new Error('Failed to delete messages')
     }
 
-    // Delete the contact
-    const { error: contactError } = await supabase
+    // Delete the contact using admin client
+    const { error: contactError } = await adminClient
         .from('contacts')
         .delete()
         .eq('id', contactId)
@@ -907,12 +917,22 @@ export async function deleteConversation(contactId: string) {
 
 export async function updateContactName(contactId: string, newName: string) {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        throw new Error('Unauthorized')
+    }
 
     if (!newName.trim()) {
         throw new Error('Name cannot be empty')
     }
 
-    const { error } = await supabase
+    const adminClient = createAdminClient()
+    if (!adminClient) {
+        throw new Error('Server configuration error: Admin client not available')
+    }
+
+    const { error } = await adminClient
         .from('contacts')
         .update({ name: newName.trim() })
         .eq('id', contactId)
