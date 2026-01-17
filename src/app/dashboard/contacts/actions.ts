@@ -54,8 +54,7 @@ export async function importContacts(contacts: { name: string; phone: string; ta
             status: 'open',
             // Default values
             email: null,
-            avatar_url: null,
-            unread_count: 0
+            avatar_url: null
         })
     }
 
