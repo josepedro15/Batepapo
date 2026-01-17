@@ -967,6 +967,8 @@ export function ChatInterface({
                                         e.stopPropagation()
                                         setOpenDropdownId(openDropdownId === contact.id ? null : contact.id)
                                         setDeleteConfirmId(null)
+                                        setEditingContactId(null)
+                                        setEditingName('')
                                     }}
                                     className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
                                 >
