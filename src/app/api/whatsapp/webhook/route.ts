@@ -219,7 +219,6 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Create new contact if not found
-                // Create new contact if not found
                 if (!contactId) {
                     console.log('Creating new contact...')
                     const { data: newContact, error } = await supabase
@@ -241,6 +240,74 @@ export async function POST(request: NextRequest) {
                     contactId = newContact.id
                     console.log('Created new contact:', contactId)
 
+                    // AUTOMATIC MESSAGE LOGIC
+                    // Only for incoming messages (not from me)
+                    if (!msg.fromMe && instanceToken) {
+                        try {
+                            console.log('Checking for automatic message rules...')
+
+                            // Get current time in Brazil (GMT-3)
+                            const now = new Date()
+                            const brTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+                            const currentHour = brTime.getHours()
+                            const currentMinute = brTime.getMinutes()
+                            const currentTimeValue = currentHour * 60 + currentMinute
+
+                            // Get active rules for this organization
+                            const { data: rules } = await supabase
+                                .from('automatic_message_rules')
+                                .select('*')
+                                .eq('organization_id', organizationId)
+                                .eq('is_active', true)
+
+                            if (rules && rules.length > 0) {
+                                for (const rule of rules) {
+                                    // Parse start and end times
+                                    // Format is usually HH:MM or HH:MM:SS
+                                    const [startH, startM] = rule.start_time.split(':').map(Number)
+                                    const [endH, endM] = rule.end_time.split(':').map(Number)
+
+                                    const startTimeValue = startH * 60 + startM
+                                    const endTimeValue = endH * 60 + endM
+
+                                    // Check if current time is within range
+                                    let isWithinRange = false
+                                    if (startTimeValue <= endTimeValue) {
+                                        // Standard range (e.g. 09:00 to 18:00)
+                                        isWithinRange = currentTimeValue >= startTimeValue && currentTimeValue <= endTimeValue
+                                    } else {
+                                        // Overnight range (e.g. 22:00 to 06:00)
+                                        isWithinRange = currentTimeValue >= startTimeValue || currentTimeValue <= endTimeValue
+                                    }
+
+                                    if (isWithinRange) {
+                                        console.log(`Sending automatic message via rule: ${rule.name}`)
+
+                                        // Send message via UAZAPI
+                                        await uazapi.sendTextMessage(instanceToken, rawPhone, rule.message)
+
+                                        // Save to database so it appears in chat
+                                        await supabase
+                                            .from('messages')
+                                            .insert({
+                                                organization_id: organizationId,
+                                                contact_id: contactId,
+                                                sender_type: 'system', // or 'user' to look like it came from us? Requester said "automatic message", usually looks like a sent message.
+                                                body: rule.message,
+                                                status: 'sent',
+                                                whatsapp_id: 'auto_' + Date.now() // Placeholder ID
+                                            })
+
+                                        console.log('Automatic message sent and saved.')
+                                        break; // Only send one rule's message
+                                    }
+                                }
+                            }
+                        } catch (autoMsgError) {
+                            console.error('Error processing automatic message:', autoMsgError)
+                            // Don't block the rest of the webhook
+                        }
+                    }
                 }
             }
 

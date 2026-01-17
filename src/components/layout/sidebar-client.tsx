@@ -27,14 +27,15 @@ const allNavigation = [
     { name: "Campanhas", href: "/dashboard/campaigns", icon: Megaphone },
     { name: "Contatos", href: "/dashboard/contacts", icon: Users },
     { name: "Msg. Rápidas", href: "/dashboard/quick-messages", icon: Zap },
+    { name: "Mensagens Automáticas", href: "/dashboard/automatic-messages", icon: MessageSquare }, // Using MessageSquare for now, could be Bot
     { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ]
 
 // Define allowed routes per role
 const rolePermissions: Record<string, string[]> = {
     attendant: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/quick-messages"],
-    manager: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/quick-messages"],
-    owner: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/settings", "/dashboard/quick-messages"],
+    manager: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/quick-messages", "/dashboard/automatic-messages"],
+    owner: ["/dashboard", "/dashboard/kanban", "/dashboard/chat", "/dashboard/campaigns", "/dashboard/contacts", "/dashboard/settings", "/dashboard/quick-messages", "/dashboard/automatic-messages"],
 }
 
 export function SidebarClient({
