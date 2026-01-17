@@ -73,17 +73,19 @@ export async function POST(request: NextRequest) {
         // Find the organization by instance token
         let organizationId: string
         let instanceId: string
+        let connectedPhone: string | null = null
 
         if (instanceToken) {
             const { data: instance } = await supabase
                 .from('whatsapp_instances')
-                .select('id, organization_id, status')
+                .select('id, organization_id, status, phone_number')
                 .eq('instance_token', instanceToken)
                 .single()
 
             if (instance) {
                 organizationId = instance.organization_id
                 instanceId = instance.id
+                connectedPhone = instance.phone_number || null
             } else {
                 // Fallback: get first instance
                 const { data: firstInstance } = await supabase
@@ -187,34 +189,77 @@ export async function POST(request: NextRequest) {
 
             console.log('Looking for contact:', { rawPhone, contactName, organizationId })
 
+            // Determine if message is from us (needed early for reopen logic)
+            const isFromMe = msg.fromMe || false
+
             // Find or create contact
             let contactId: string | undefined
+            let contactStatus: string | undefined
 
             // Try to find existing contact by phone
             const { data: existingContact } = await supabase
                 .from('contacts')
-                .select('id')
+                .select('id, status')
                 .eq('organization_id', organizationId)
                 .eq('phone', rawPhone)
                 .single()
 
             if (existingContact) {
                 contactId = existingContact.id
-                console.log('Found existing contact:', contactId)
+                contactStatus = existingContact.status
+                console.log('Found existing contact:', contactId, 'status:', contactStatus)
+
+                // AUTO-REOPEN: If contact is closed and message is from client (not from us),
+                // reopen the chat and move it back to the queue
+                if (contactStatus === 'closed' && !isFromMe) {
+                    console.log('Reopening closed chat - client sent a new message')
+                    const { error: reopenError } = await supabase
+                        .from('contacts')
+                        .update({
+                            status: 'open',
+                            owner_id: null  // Move back to queue (awaiting)
+                        })
+                        .eq('id', contactId)
+
+                    if (reopenError) {
+                        console.error('Error reopening chat:', reopenError)
+                    } else {
+                        console.log('Chat reopened and moved to queue')
+                    }
+                }
             } else {
                 // Also try with formatted phone (from chat.phone)
                 const formattedPhone = chat?.phone
                 if (formattedPhone) {
                     const { data: formattedContact } = await supabase
                         .from('contacts')
-                        .select('id')
+                        .select('id, status')
                         .eq('organization_id', organizationId)
                         .eq('phone', formattedPhone)
                         .single()
 
                     if (formattedContact) {
                         contactId = formattedContact.id
-                        console.log('Found contact by formatted phone:', contactId)
+                        contactStatus = formattedContact.status
+                        console.log('Found contact by formatted phone:', contactId, 'status:', contactStatus)
+
+                        // AUTO-REOPEN: Same logic for formatted phone match
+                        if (contactStatus === 'closed' && !isFromMe) {
+                            console.log('Reopening closed chat - client sent a new message')
+                            const { error: reopenError } = await supabase
+                                .from('contacts')
+                                .update({
+                                    status: 'open',
+                                    owner_id: null
+                                })
+                                .eq('id', contactId)
+
+                            if (reopenError) {
+                                console.error('Error reopening chat:', reopenError)
+                            } else {
+                                console.log('Chat reopened and moved to queue')
+                            }
+                        }
                     }
                 }
 
@@ -229,7 +274,8 @@ export async function POST(request: NextRequest) {
                             phone: rawPhone,
                             name: contactName,
                             avatar_url: msg.senderPhoto || chat?.imagePreview || chat?.image || chat?.profilePicUrl || null,
-                            status: 'open'
+                            status: 'open',
+                            connected_phone: connectedPhone
                         })
                         .select('id')
                         .single()
@@ -257,7 +303,6 @@ export async function POST(request: NextRequest) {
 
             // Extract message text and media
             const messageText = msg.text || msg.content?.text || ''
-            const isFromMe = msg.fromMe || false
 
             let mediaUrl = null
             let mediaType = null
@@ -332,7 +377,8 @@ export async function POST(request: NextRequest) {
                     media_url: mediaUrl,
                     media_type: mediaType,
                     status: isFromMe ? 'sent' : 'received',
-                    whatsapp_id: messageId || null
+                    whatsapp_id: messageId || null,
+                    connected_phone: connectedPhone
                 })
 
             if (msgError) {

@@ -40,13 +40,29 @@ export async function getContactsPaginated(
         return { contacts: [], totalCount: 0, activeCount: 0, page: 1, pageSize, totalPages: 0 }
     }
 
+    // Get connected WhatsApp instance
+    const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('phone_number')
+        .eq('organization_id', member.organization_id)
+        .eq('status', 'connected')
+        .single()
+
+    const connectedPhone = instance?.phone_number || null
+
+    // If no WhatsApp connected, return empty
+    if (!connectedPhone) {
+        return { contacts: [], totalCount: 0, activeCount: 0, page, pageSize, totalPages: 0 }
+    }
+
     const offset = (page - 1) * pageSize
 
-    // Build query for contacts
+    // Build query for contacts - filter by connected_phone
     let query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
         .eq('organization_id', member.organization_id)
+        .eq('connected_phone', connectedPhone)
 
     // Add search filter if provided
     if (search && search.trim()) {
@@ -64,11 +80,12 @@ export async function getContactsPaginated(
         return { contacts: [], totalCount: 0, activeCount: 0, page, pageSize, totalPages: 0 }
     }
 
-    // Get active count
+    // Get active count - also filter by connected_phone
     const { count: activeCount } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', member.organization_id)
+        .eq('connected_phone', connectedPhone)
         .eq('status', 'open')
 
     const totalCount = count || 0

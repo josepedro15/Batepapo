@@ -25,11 +25,37 @@ export async function getDashboardData() {
         .eq('id', user.id)
         .single()
 
-    // 3. Contact Stats
+    // Get connected WhatsApp instance
+    const { data: whatsappInstance } = await supabase
+        .from('whatsapp_instances')
+        .select('status, phone_number')
+        .eq('organization_id', orgId)
+        .single()
+
+    const connectedPhone = whatsappInstance?.status === 'connected' ? whatsappInstance?.phone_number : null
+
+    // If no connected phone, return empty stats
+    if (!connectedPhone) {
+        return {
+            userName: profile?.name || user.email?.split('@')[0] || 'Usuário',
+            userRole: member.role,
+            contactStats: { total: 0, active: 0, newThisWeek: 0 },
+            dealStats: { totalValue: 0, count: 0, byStage: [] },
+            messageStats: { today: 0, thisWeek: 0 },
+            campaignStats: { total: 0, active: 0 },
+            remindersToday: 0,
+            whatsappStatus: whatsappInstance?.status || 'disconnected',
+            whatsappPhone: null,
+            teamMembers: 0
+        }
+    }
+
+    // 3. Contact Stats - filter by connected_phone
     const { data: contacts } = await supabase
         .from('contacts')
         .select('id, status, created_at')
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
 
     const totalContacts = contacts?.length || 0
     const activeContacts = contacts?.filter(c => c.status === 'open').length || 0
@@ -41,11 +67,12 @@ export async function getDashboardData() {
         new Date(c.created_at) >= weekAgo
     ).length || 0
 
-    // 4. Deal Stats
+    // 4. Deal Stats - filter by connected_phone
     const { data: deals } = await supabase
         .from('deals')
         .select('id, value, stage_id, created_at, stages(name, color, position)')
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
 
     const totalDealsValue = deals?.reduce((sum, d) => sum + (Number(d.value) || 0), 0) || 0
     const totalDeals = deals?.length || 0
@@ -67,7 +94,7 @@ export async function getDashboardData() {
 
     const dealsByStageArray = Object.values(dealsByStage).sort((a, b) => a.position - b.position)
 
-    // 5. Message Stats
+    // 5. Message Stats - filter by connected_phone
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const todayISO = today.toISOString()
@@ -76,6 +103,7 @@ export async function getDashboardData() {
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
         .gte('created_at', todayISO)
 
     const weekAgoISO = weekAgo.toISOString()
@@ -83,9 +111,10 @@ export async function getDashboardData() {
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
         .gte('created_at', weekAgoISO)
 
-    // 6. Campaign Stats
+    // 6. Campaign Stats (campaigns don't have connected_phone, keep as is)
     const { data: campaigns } = await supabase
         .from('campaigns')
         .select('id, status')
@@ -106,14 +135,7 @@ export async function getDashboardData() {
         .gte('due_at', todayISO)
         .lt('due_at', tomorrow.toISOString())
 
-    // 8. WhatsApp Status
-    const { data: whatsappInstance } = await supabase
-        .from('whatsapp_instances')
-        .select('status, phone_number')
-        .eq('organization_id', orgId)
-        .single()
-
-    // 9. Team Members
+    // 8. Team Members
     const { count: teamMembers } = await supabase
         .from('organization_members')
         .select('*', { count: 'exact', head: true })

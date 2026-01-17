@@ -68,6 +68,16 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
 
     const orgId = member.organization_id
 
+    // Get connected WhatsApp instance
+    const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('phone_number')
+        .eq('organization_id', orgId)
+        .eq('status', 'connected')
+        .single()
+
+    const connectedPhone = instance?.phone_number || null
+
     // 2. Fetch Pipelines
     const { data: pipelines } = await supabase.from('pipelines').select('id, name').eq('organization_id', orgId)
 
@@ -104,34 +114,10 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
         console.error('Error fetching stages:', stagesError)
     }
 
-    // NEW: Fetch optimized stats (count, sum value, compute_value) using DB function
-    // This assumes the user has run the migration script
-    const { data: stageStats, error: statsError } = await supabase
-        .rpc('get_kanban_stats', { pipeline_uuid: pipeline.id })
-
-    if (statsError) {
-        console.warn('Could not fetch optimized stats (rpc get_kanban_stats). User might not have run migration.', statsError)
-    }
-
-    // Map stats for easy lookup
-    const statsMap = new Map()
-    if (stageStats) {
-        stageStats.forEach((stat: any) => {
-            statsMap.set(stat.stage_id, stat)
-        })
-    }
-
     // Fetch first page of deals for EACH stage
     const processedStages = await Promise.all((stages || []).map(async (stage) => {
-        // Fallback or use RPC data
-        const stat = statsMap.get(stage.id)
-        const totalDeals = stat ? stat.total_count : 0
-        const totalValue = stat ? stat.total_value : 0
-
-        // Note: stage object from simplified select above might not have compute_value if schema not updated yet in types, 
-        // but `select('*')` gets it. The RPC also returns it.
-        // Let's ensure we use the compute_value from RPC if available, or fall back to stage row (if column exists)
-        const computeValue = stat ? stat.compute_value : (stage.compute_value || false)
+        // We won't use RPC stats anymore since they don't filter by connected_phone
+        const computeValue = stage.compute_value || false
 
         // Prepare base queries for deals
         let selectString = '*, contacts(name, phone)'
@@ -148,42 +134,38 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
 
         let countQuery = supabase
             .from('deals')
-            .select(selectString, { count: 'exact', head: true })
+            .select('value', { count: 'exact' })
             .eq('stage_id', stage.id)
+
+        // Filter by connected phone if available
+        if (connectedPhone) {
+            dealsQuery = dealsQuery.eq('connected_phone', connectedPhone)
+            countQuery = countQuery.eq('connected_phone', connectedPhone)
+        } else {
+            // No connected phone means no deals to show
+            dealsQuery = dealsQuery.eq('connected_phone', '__NO_CONNECTED_PHONE__')
+            countQuery = countQuery.eq('connected_phone', '__NO_CONNECTED_PHONE__')
+        }
 
         if (search) {
             dealsQuery = dealsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
             countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
         }
 
-        const { data: deals } = await dealsQuery
+        const [{ data: deals }, { count, data: allDeals }] = await Promise.all([
+            dealsQuery,
+            countQuery
+        ])
 
-        // If searching, we need to get the count from the query because the RPC stats are global for the stage (unfiltered)
-        let finalTotalDeals = totalDeals
-        let finalTotalValue = totalValue
-
-        if (search) {
-            const { count } = await countQuery
-            finalTotalDeals = count || 0
-            // When searching, we don't easily get the sum of values for filtered items without another query
-            // For now, let's just leave sum as is (global) or set to 0? 
-            // Better to leave global sum or implement filtered sum?
-            // User requested sum of stage. Usually pipeline value is global.
-            // If filtering, maybe we just show the filtered deals and keep the global stage value? 
-            // Or maybe Recalculate? For MVP performance, keeping global value is safer/faster.
-            // But let's check current implementation: previously we calculated sum in JS.
-            // If we want exact sum of filtered items we need a query `sum(value)`.
-            // Let's stick to RPC global stats when NOT searching.
-            // When searching, let's keep the global value in headers for now as the prompt didn't specify 'search filters value sum'
-            // and the user specifically asked for "Optionally include stage in global pipeline value".
-        }
+        // Calculate total value from the filtered deals
+        const totalValue = (allDeals || []).reduce((sum: number, d: any) => sum + (parseFloat(d.value) || 0), 0)
 
         return {
             ...stage,
             compute_value: computeValue,
             deals: deals || [],
-            totalDeals: finalTotalDeals,
-            totalValue: finalTotalValue,
+            totalDeals: count || 0,
+            totalValue,
             hasMore: (deals?.length || 0) === DEALS_PER_PAGE
         }
     }))

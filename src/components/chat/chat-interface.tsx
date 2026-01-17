@@ -48,7 +48,9 @@ export function ChatInterface({
     currentUserId,
     orgId,
     userRole,
-    members
+    members,
+    attendantName,
+    showAttendantName
 }: {
     initialMyChats: any[],
     initialAwaitingChats: any[],
@@ -57,7 +59,9 @@ export function ChatInterface({
     currentUserId: string,
     orgId: string,
     userRole: string,
-    members: any[]
+    members: any[],
+    attendantName: string,
+    showAttendantName: boolean
 }) {
     const [activeTab, setActiveTab] = useState<'mine' | 'awaiting' | 'all' | 'finished'>('mine')
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
@@ -94,6 +98,41 @@ export function ChatInterface({
         })
     }
 
+    // Helper to get date key for grouping (YYYY-MM-DD in Brasilia timezone)
+    const getDateKey = (timestamp: string) => {
+        const date = new Date(timestamp)
+        return date.toLocaleDateString('pt-BR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'America/Sao_Paulo'
+        })
+    }
+
+    // Helper to format date label (Hoje, Ontem, or DD/MM)
+    const formatDateLabel = (timestamp: string) => {
+        const date = new Date(timestamp)
+        const now = new Date()
+        
+        // Get dates in Brasilia timezone for comparison
+        const dateStr = date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        const todayStr = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        
+        const yesterday = new Date(now)
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayStr = yesterday.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        
+        if (dateStr === todayStr) return 'Hoje'
+        if (dateStr === yesterdayStr) return 'Ontem'
+        
+        // Return formatted date (DD/MM)
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            timeZone: 'America/Sao_Paulo'
+        })
+    }
+
     // Media State
     const [isRecording, setIsRecording] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<{ file: File, preview: string, type: 'image' | 'audio' }[]>([])
@@ -113,10 +152,14 @@ export function ChatInterface({
     const [canScrollLeft, setCanScrollLeft] = useState(false)
     const [canScrollRight, setCanScrollRight] = useState(false)
 
-    // Close dropdown when clicking outside
+    // Close dropdown when clicking outside (using capture phase and checking target)
     useEffect(() => {
-        const handleClickOutside = () => {
-            if (openDropdownId) {
+        const handleClickOutside = (event: MouseEvent) => {
+            // Only close if clicking outside dropdown menus
+            const target = event.target as HTMLElement
+            const isInsideDropdown = target.closest('[data-dropdown-menu]')
+            
+            if (openDropdownId && !isInsideDropdown) {
                 setOpenDropdownId(null)
                 setDeleteConfirmId(null)
                 setEditingContactId(null)
@@ -124,8 +167,9 @@ export function ChatInterface({
             }
         }
 
-        document.addEventListener('click', handleClickOutside)
-        return () => document.removeEventListener('click', handleClickOutside)
+        // Use mousedown instead of click to fire before button handlers
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [openDropdownId])
 
     // Message cache per contact - stores messages in memory for instant switching
@@ -492,48 +536,58 @@ export function ChatInterface({
                 if (newMessages && newMessages.length > 0) {
                     // Use setMessages with callback to get fresh state and avoid duplicates
                     setMessages(prev => {
-                        // Check for optimistic messages (temp-*) that should be replaced
-                        const tempMessages = prev.filter(m => m.id.startsWith('temp-'))
-                        const realMessages = prev.filter(m => !m.id.startsWith('temp-'))
+                        const existingRealIds = new Set(prev.filter(m => !m.id.startsWith('temp-')).map(m => m.id))
+                        const trulyNew = newMessages.filter((m: Message) => !existingRealIds.has(m.id))
 
-                        const existingIds = new Set(realMessages.map(m => m.id))
-                        const trulyNew = newMessages.filter((m: Message) => !existingIds.has(m.id))
+                        if (trulyNew.length === 0) {
+                            return prev // No new messages, no change needed
+                        }
 
-                        if (trulyNew.length > 0) {
-                            // For each new message, check if it matches an optimistic message (same body)
-                            // and replace it, or add it as new
-                            let updatedMessages = [...realMessages]
+                        // Create a mutable copy to work with
+                        let updatedMessages = [...prev]
+                        const tempIdsToRemove = new Set<string>()
 
-                            for (const newMsg of trulyNew) {
-                                // Find matching optimistic message by body and sender_type
-                                const matchingOptimistic = tempMessages.find(
-                                    t => t.body === newMsg.body && t.sender_type === newMsg.sender_type
-                                )
-
-                                if (matchingOptimistic) {
-                                    // This is our optimistic message confirmed - already in list, just skip
-                                    // (the optimistic was filtered out, so we add the real one)
-                                    updatedMessages.push(newMsg)
-                                } else {
-                                    // Truly new message from contact
-                                    // Note: No notification sound here - user is viewing the chat screen
-                                    updatedMessages.push(newMsg)
+                        for (const newMsg of trulyNew) {
+                            // Find matching optimistic message
+                            // The server may add a prefix like "Lucas: " to the message
+                            // So we check if the real message CONTAINS the temp message body
+                            // or if sender_type matches and they were sent within a short time window
+                            const optimisticIndex = updatedMessages.findIndex(m => {
+                                if (!m.id.startsWith('temp-') || m.sender_type !== newMsg.sender_type) {
+                                    return false
                                 }
-                            }
-
-                            // Sort by created_at to maintain order
-                            updatedMessages.sort((a, b) =>
-                                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                            )
-
-                            // Scroll to bottom when new messages arrive
-                            requestAnimationFrame(() => {
-                                scrollToBottom('smooth')
+                                // Match by: 1) exact body, 2) real contains temp body, 3) same sender within 30s
+                                const tempBody = m.body || ''
+                                const realBody = newMsg.body || ''
+                                const bodyMatch = tempBody === realBody || realBody.includes(tempBody)
+                                const timeDiff = Math.abs(new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime())
+                                const timeMatch = timeDiff < 30000 // Within 30 seconds
+                                
+                                return bodyMatch || (m.sender_type === 'user' && timeMatch)
                             })
 
-                            return updatedMessages
+                            if (optimisticIndex !== -1) {
+                                // Mark temp message for removal and DON'T add the new one
+                                // (the real message replaces at the same position)
+                                tempIdsToRemove.add(updatedMessages[optimisticIndex].id)
+                                updatedMessages[optimisticIndex] = newMsg
+                            } else {
+                                // Truly new message (from contact or server) - add to list
+                                updatedMessages.push(newMsg)
+                            }
                         }
-                        return prev
+
+                        // Sort by created_at to maintain order
+                        updatedMessages.sort((a, b) =>
+                            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                        )
+
+                        // Scroll to bottom when new messages arrive
+                        requestAnimationFrame(() => {
+                            scrollToBottom('smooth')
+                        })
+
+                        return updatedMessages
                     })
                 }
             } catch (error) {
@@ -588,8 +642,23 @@ export function ChatInterface({
         try {
             await finishChat(selectedContact.id)
             setSelectedContact(null)
+            
+            // Remove chatId from URL to prevent being redirected to finished tab
+            const params = new URLSearchParams(searchParams.toString())
+            params.delete('chatId')
+            const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname
+            router.replace(newUrl)
+            
+            // Refresh contact lists to move chat to "Finalizados" tab
+            const data = await getChatData()
+            setMyChats(data.myChats || [])
+            setAwaitingChats(data.awaitingChats || [])
+            setAllChats(data.allChats || [])
+            setFinishedChats(data.finishedChats || [])
+            
             toast.success('Atendimento finalizado')
         } catch (error) {
+            console.error('Error finishing chat:', error)
             toast.error('Erro ao finalizar atendimento')
         }
     }
@@ -742,13 +811,27 @@ export function ChatInterface({
     }
 
     const handleDeleteConversation = async (contactId: string, contactName: string) => {
+        const loadingToast = toast.loading('Excluindo conversa...')
         try {
-            await deleteConversation(contactId)
+            const result = await deleteConversation(contactId)
+            
+            if (!result?.success) {
+                throw new Error('Delete failed')
+            }
 
             // Clear selection if deleted contact was selected
             if (selectedContact?.id === contactId) {
                 setSelectedContact(null)
+                
+                // Remove chatId from URL
+                const params = new URLSearchParams(searchParams.toString())
+                params.delete('chatId')
+                const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname
+                router.replace(newUrl)
             }
+
+            // Clear message cache for this contact
+            messageCacheRef.current.delete(contactId)
 
             // Refresh contact lists
             const data = await getChatData()
@@ -759,10 +842,10 @@ export function ChatInterface({
 
             setDeleteConfirmId(null)
             setOpenDropdownId(null)
-            toast.success(`Conversa com ${contactName} excluída`)
-        } catch (error) {
+            toast.success(`Conversa com ${contactName} excluída`, { id: loadingToast })
+        } catch (error: any) {
             console.error('Error deleting conversation:', error)
-            toast.error('Erro ao excluir conversa')
+            toast.error(error?.message || 'Erro ao excluir conversa', { id: loadingToast })
         }
     }
 
@@ -991,7 +1074,9 @@ export function ChatInterface({
                                 {/* Dropdown menu */}
                                 {openDropdownId === contact.id && (
                                     <div
+                                        data-dropdown-menu
                                         onClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.stopPropagation()}
                                         className="absolute right-0 top-10 bg-card border border-border rounded-lg shadow-lg z-50 min-w-[200px] overflow-hidden"
                                     >
                                         {editingContactId === contact.id ? (
@@ -1198,27 +1283,53 @@ export function ChatInterface({
                                 </div>
                             ) : (
                                 groupedMessages.map((item, index) => {
+                                    // Get timestamp from current item
+                                    const currentTimestamp = item.type === 'image-group' 
+                                        ? messages.find(m => m.id === item.firstMessageId)?.created_at 
+                                        : item.message.created_at
+                                    
+                                    // Get timestamp from previous item for date comparison
+                                    const prevItem = index > 0 ? groupedMessages[index - 1] : null
+                                    const prevTimestamp = prevItem 
+                                        ? (prevItem.type === 'image-group' 
+                                            ? messages.find(m => m.id === prevItem.firstMessageId)?.created_at 
+                                            : prevItem.message.created_at)
+                                        : null
+
+                                    // Check if we need to show a date separator
+                                    const showDateSeparator = currentTimestamp && (
+                                        index === 0 || 
+                                        (prevTimestamp && getDateKey(currentTimestamp) !== getDateKey(prevTimestamp))
+                                    )
+
                                     if (item.type === 'image-group') {
                                         // Render grouped images
                                         return (
-                                            <div
-                                                key={item.firstMessageId}
-                                                className={cn("flex animate-fade-in", item.senderType === 'user' ? "justify-end" : "justify-start")}
-                                                style={{ animationDelay: `${index * 20}ms` }}
-                                            >
+                                            <div key={item.firstMessageId}>
+                                                {showDateSeparator && currentTimestamp && (
+                                                    <div className="flex items-center justify-center my-4">
+                                                        <div className="px-4 py-1.5 bg-muted/50 rounded-full text-xs font-medium text-muted-foreground border border-border/30">
+                                                            {formatDateLabel(currentTimestamp)}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div
-                                                    className={cn(
-                                                        "p-2 rounded-2xl shadow-sm transition-all duration-200",
-                                                        item.senderType === 'user'
-                                                            ? 'bg-primary rounded-tr-md'
-                                                            : 'bg-card rounded-tl-md border border-border/50'
-                                                    )}
+                                                    className={cn("flex", item.senderType === 'user' ? "justify-end" : "justify-start")}
                                                 >
-                                                    <MessageImageGroup
-                                                        images={item.images}
-                                                        onOpenGallery={(idx) => openGallery(item.images, idx)}
-                                                        isFromUser={item.senderType === 'user'}
-                                                    />
+                                                    <div
+                                                        className={cn(
+                                                            "p-2 rounded-2xl shadow-sm transition-all duration-200",
+                                                            item.senderType === 'user'
+                                                                ? 'bg-primary rounded-tr-md'
+                                                                : 'bg-card rounded-tl-md border border-border/50'
+                                                        )}
+                                                    >
+                                                        <MessageImageGroup
+                                                            images={item.images}
+                                                            onOpenGallery={(idx) => openGallery(item.images, idx)}
+                                                            isFromUser={item.senderType === 'user'}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         )
@@ -1226,39 +1337,46 @@ export function ChatInterface({
                                         // Render single message (non-image or audio)
                                         const message = item.message
                                         return (
-                                            <div
-                                                key={message.id}
-                                                className={cn("flex animate-fade-in", message.sender_type === 'user' ? "justify-end" : "justify-start")}
-                                                style={{ animationDelay: `${index * 20}ms` }}
-                                            >
+                                            <div key={message.id}>
+                                                {showDateSeparator && (
+                                                    <div className="flex items-center justify-center my-4">
+                                                        <div className="px-4 py-1.5 bg-muted/50 rounded-full text-xs font-medium text-muted-foreground border border-border/30">
+                                                            {formatDateLabel(message.created_at)}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div
-                                                    className={cn(
-                                                        "p-4 rounded-2xl max-w-[75%] shadow-sm transition-all duration-200",
-                                                        message.sender_type === 'user'
-                                                            ? 'bg-primary text-primary-foreground rounded-tr-md'
-                                                            : 'bg-card text-foreground rounded-tl-md border border-border/50'
-                                                    )}
+                                                    className={cn("flex", message.sender_type === 'user' ? "justify-end" : "justify-start")}
                                                 >
-                                                    {message.body && message.media_type !== 'audio' && (
-                                                        <p className="leading-relaxed">{message.body}</p>
-                                                    )}
-
-                                                    {message.media_type === 'audio' && message.media_url && (
-                                                        <AudioPlayer
-                                                            src={message.media_url}
-                                                            isFromUser={message.sender_type === 'user'}
-                                                        />
-                                                    )}
-
-                                                    <div className="flex items-center justify-end gap-1 mt-1">
-                                                        <span className={cn(
-                                                            "text-[10px]",
+                                                    <div
+                                                        className={cn(
+                                                            "p-4 rounded-2xl max-w-[75%] shadow-sm transition-all duration-200",
                                                             message.sender_type === 'user'
-                                                                ? "text-primary-foreground/70"
-                                                                : "text-muted-foreground"
-                                                        )}>
-                                                            {formatTime(message.created_at)}
-                                                        </span>
+                                                                ? 'bg-primary text-primary-foreground rounded-tr-md'
+                                                                : 'bg-card text-foreground rounded-tl-md border border-border/50'
+                                                        )}
+                                                    >
+                                                        {message.body && message.media_type !== 'audio' && (
+                                                            <p className="leading-relaxed">{message.body}</p>
+                                                        )}
+
+                                                        {message.media_type === 'audio' && message.media_url && (
+                                                            <AudioPlayer
+                                                                src={message.media_url}
+                                                                isFromUser={message.sender_type === 'user'}
+                                                            />
+                                                        )}
+
+                                                        <div className="flex items-center justify-end gap-1 mt-1">
+                                                            <span className={cn(
+                                                                "text-[10px]",
+                                                                message.sender_type === 'user'
+                                                                    ? "text-primary-foreground/70"
+                                                                    : "text-muted-foreground"
+                                                            )}>
+                                                                {formatTime(message.created_at)}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1282,10 +1400,15 @@ export function ChatInterface({
                                             const messageBody = inputText
                                             setInputText('')
 
+                                            // Build the display body (with attendant name prefix if enabled)
+                                            const displayBody = showAttendantName 
+                                                ? `${attendantName}: ${messageBody}`
+                                                : messageBody
+
                                             // OPTIMISTIC UI: Add message to list immediately
                                             const optimisticMessage: Message = {
                                                 id: `temp-${Date.now()}`, // Temporary ID
-                                                body: messageBody,
+                                                body: displayBody,
                                                 sender_type: 'user',
                                                 created_at: new Date().toISOString(),
                                                 media_url: null,

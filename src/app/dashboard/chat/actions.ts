@@ -14,41 +14,69 @@ export async function getChatData() {
     const orgId = member?.organization_id
     const userRole = member?.role
 
-    // 1. Fetch "My Chats" (Assigned to me)
+    // Get connected WhatsApp instance
+    const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('phone_number, status')
+        .eq('organization_id', orgId)
+        .eq('status', 'connected')
+        .single()
+
+    const connectedPhone = instance?.phone_number || null
+
+    // If no WhatsApp connected, return empty lists
+    if (!connectedPhone) {
+        return {
+            myChats: [],
+            awaitingChats: [],
+            allChats: [],
+            finishedChats: [],
+            currentUserId: user.id,
+            orgId,
+            userRole,
+            connectedPhone: null
+        }
+    }
+
+    // 1. Fetch "My Chats" (Assigned to me) - filtered by connected_phone
     const { data: myChats } = await supabase
         .from('contacts')
         .select('*')
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
         .eq('owner_id', user.id)
         .neq('status', 'closed')
         .order('created_at', { ascending: false })
 
-    // 2. Fetch "Awaiting" (Unassigned)
+    // 2. Fetch "Awaiting" (Unassigned) - filtered by connected_phone
     const { data: awaitingChats } = await supabase
         .from('contacts')
         .select('*')
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
         .is('owner_id', null)
         .neq('status', 'closed')
         .order('created_at', { ascending: false })
 
-    // 3. Fetch "All" (Only for managers/owners)
+    // 3. Fetch "All" (Only for managers/owners) - filtered by connected_phone
     let allChats: any[] = []
     if (userRole === 'owner' || userRole === 'manager') {
         const { data } = await supabase
             .from('contacts')
             .select('*')
             .eq('organization_id', orgId)
+            .eq('connected_phone', connectedPhone)
             .neq('status', 'closed')
             .order('created_at', { ascending: false })
         allChats = data || []
     }
 
-    // 4. Fetch "Finished" (Closed chats)
+    // 4. Fetch "Finished" (Closed chats) - filtered by connected_phone
     const { data: finishedChats } = await supabase
         .from('contacts')
         .select('*')
         .eq('organization_id', orgId)
+        .eq('connected_phone', connectedPhone)
         .eq('status', 'closed')
         .order('updated_at', { ascending: false })
         .limit(50) // Limit to avoid performance issues
@@ -166,7 +194,8 @@ export async function getChatData() {
         finishedChats: finishedChatsWithMsg,
         currentUserId: user.id,
         orgId,
-        userRole
+        userRole,
+        connectedPhone
     }
 }
 
@@ -210,10 +239,10 @@ export async function sendMessage(contactId: string, body: string, orgId: string
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
-    // 1. Get contact details
+    // 1. Get contact details (including connected_phone for message tracking)
     const { data: contact } = await supabase
         .from('contacts')
-        .select('phone')
+        .select('phone, connected_phone')
         .eq('id', contactId)
         .single()
 
@@ -239,14 +268,15 @@ export async function sendMessage(contactId: string, body: string, orgId: string
         messageBody = `*${attendantName}:*\n\n${body}`
     }
 
-    // 3. Insert message with 'sending' status (store original body for display in UI)
+    // 3. Insert message with 'sending' status (store messageBody which includes attendant name if enabled)
     const { data: msg, error } = await supabase.from('messages').insert({
         organization_id: orgId,
         contact_id: contactId,
         sender_type: 'user',
         sender_id: user.id,
-        body,
-        status: 'sending'
+        body: messageBody.split('*').join(''),
+        status: 'sending',
+        connected_phone: contact.connected_phone
     }).select('id').single()
 
     if (error) throw new Error(error.message)
@@ -305,6 +335,13 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
 
     if (!file) throw new Error('No file provided')
 
+    // Get contact's connected_phone for message tracking
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('connected_phone')
+        .eq('id', contactId)
+        .single()
+
     // Convert File to ArrayBuffer for server-side upload
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
@@ -349,7 +386,8 @@ export async function sendMedia(contactId: string, formData: FormData, orgId: st
         body: mediaType === 'audio' ? 'Áudio enviado' : 'Imagem enviada',
         media_url: mediaUrl,
         media_type: mediaType,
-        status: 'sending'
+        status: 'sending',
+        connected_phone: contact?.connected_phone
     }).select('id').single()
 
     if (msgError) throw new Error(msgError.message)

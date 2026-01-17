@@ -115,7 +115,7 @@ async function getOrgAndInstance() {
     // Get WhatsApp instance for this org (don't filter by status in query)
     const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('id, instance_token, status')
+        .select('id, instance_token, status, phone_number')
         .eq('organization_id', member.organization_id)
         .single()
 
@@ -123,7 +123,8 @@ async function getOrgAndInstance() {
         userId: user.id,
         organizationId: member.organization_id,
         instanceToken: instance?.instance_token || null,
-        instanceConnected: instance?.status === 'connected'
+        instanceConnected: instance?.status === 'connected',
+        connectedPhone: instance?.phone_number || null
     }
 }
 
@@ -317,7 +318,12 @@ export async function createCampaign(input: CreateCampaignInput) {
  */
 export async function getCampaigns(): Promise<CampaignData[]> {
     const supabase = await createClient()
-    const { organizationId } = await getOrgAndInstance()
+    const { organizationId, instanceConnected } = await getOrgAndInstance()
+
+    // If no instance connected, return empty
+    if (!instanceConnected) {
+        return []
+    }
 
     const { data: campaigns, error } = await supabase
         .from('campaigns')
@@ -342,16 +348,22 @@ export async function getContactsForCampaign(
     filters?: { tagName?: string; stageId?: string }
 ) {
     const supabase = await createClient()
-    const { organizationId } = await getOrgAndInstance()
+    const { organizationId, connectedPhone } = await getOrgAndInstance()
+
+    // If no WhatsApp connected, return empty
+    if (!connectedPhone) {
+        return { contacts: [], total: 0, hasMore: false }
+    }
 
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
 
-    // Build query
+    // Build query - filter by connected_phone
     let query = supabase
         .from('contacts')
         .select('id, name, phone, avatar_url, tags', { count: 'exact' })
         .eq('organization_id', organizationId)
+        .eq('connected_phone', connectedPhone)
         .neq('status', 'closed')
 
     // Apply tag filter (tags is an array column)

@@ -6,6 +6,7 @@ import { TagManagement } from '@/components/settings/tag-management'
 import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
 import { AISettingsCard } from '@/components/settings/ai-settings-card'
 import { MessageSettingsCard } from '@/components/settings/message-settings-card'
+import { SoundSettingsCard } from '@/components/settings/sound-settings-card'
 import { SubscriptionCard } from '@/components/settings/subscription-card'
 import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound, CreditCard } from 'lucide-react'
 
@@ -109,6 +110,9 @@ export default async function SettingsPage() {
                         </div>
                         <div className="animate-slide-up" style={{ animationDelay: '250ms' }}>
                             <MessageSettingsCard />
+                        </div>
+                        <div className="animate-slide-up" style={{ animationDelay: '300ms' }}>
+                            <SoundSettingsCard />
                         </div>
                     </div>
                 </div>

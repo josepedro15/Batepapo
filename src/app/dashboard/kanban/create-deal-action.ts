@@ -22,6 +22,13 @@ export async function createDeal(formData: FormData) {
 
     if (!pipeline) throw new Error('No pipeline found')
 
+    // Get contact's connected_phone
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('connected_phone')
+        .eq('id', contactId)
+        .single()
+
     console.log('--- Creating Deal ---')
     console.log('Payload:', { orgId, pipelineId: pipeline.id, stageId, contactId, title, value })
 
@@ -33,7 +40,8 @@ export async function createDeal(formData: FormData) {
         contact_id: contactId,
         title,
         value,
-        position: 0
+        position: 0,
+        connected_phone: contact?.connected_phone
     }).select().single()
 
     console.log('Insert Result:', { newDeal, error })
