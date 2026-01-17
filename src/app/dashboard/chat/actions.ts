@@ -875,3 +875,57 @@ export async function getContact(contactId: string) {
         unread_count: unreadCount
     }
 }
+
+export async function deleteConversation(contactId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+
+    // Delete all messages for this contact first
+    const { error: messagesError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('contact_id', contactId)
+
+    if (messagesError) {
+        console.error('Error deleting messages:', messagesError)
+        throw new Error('Failed to delete messages')
+    }
+
+    // Delete the contact
+    const { error: contactError } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', contactId)
+
+    if (contactError) {
+        console.error('Error deleting contact:', contactError)
+        throw new Error('Failed to delete contact')
+    }
+
+    revalidatePath('/dashboard/chat')
+    return { success: true }
+}
+
+export async function updateContactName(contactId: string, newName: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+
+    if (!newName.trim()) {
+        throw new Error('Name cannot be empty')
+    }
+
+    const { error } = await supabase
+        .from('contacts')
+        .update({ name: newName.trim() })
+        .eq('id', contactId)
+
+    if (error) {
+        console.error('Error updating contact name:', error)
+        throw new Error('Failed to update contact name')
+    }
+
+    revalidatePath('/dashboard/chat')
+    return { success: true }
+}

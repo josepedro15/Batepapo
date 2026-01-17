@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNotification } from '@/components/providers/notification-provider'
 import { createClient } from '@/lib/supabase/client'
-import { assignChat, sendMessage, finishChat, reopenChat, getMessages, getNewMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact } from '@/app/dashboard/chat/actions'
+import { assignChat, sendMessage, finishChat, reopenChat, getMessages, getNewMessages, syncProfilePictures, sendMedia, getChatData, refreshContactAvatar, getContact, deleteConversation, updateContactName } from '@/app/dashboard/chat/actions'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { User, MessageSquare, Send, Clock, ArrowRight, CheckCircle, RotateCcw, Plus, RefreshCw, Paperclip, Mic, X, ImageIcon, MessageCircle, Loader2, ChevronLeft, ChevronRight, Search, MoreVertical, Trash2, Edit, Check } from 'lucide-react'
 import { TransferChatDialog } from '@/components/dialogs/transfer-chat-dialog'
 import { NewChatDialog } from '@/components/dialogs/new-chat-dialog'
 import { ContactDetailsPanel } from '@/components/chat/contact-details-panel'
@@ -71,6 +71,11 @@ export function ChatInterface({
     const [page, setPage] = useState(0)
     const [hasMore, setHasMore] = useState(true)
     const MESSAGES_PER_PAGE = 25
+    const [searchQuery, setSearchQuery] = useState('')
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+    const [editingContactId, setEditingContactId] = useState<string | null>(null)
+    const [editingName, setEditingName] = useState('')
 
     // Contact lists state (for real-time updates)
     const [myChats, setMyChats] = useState<any[]>(initialMyChats || [])
@@ -107,6 +112,21 @@ export function ChatInterface({
     const shouldScrollToBottomRef = useRef(true) // Flag to control auto-scroll
     const [canScrollLeft, setCanScrollLeft] = useState(false)
     const [canScrollRight, setCanScrollRight] = useState(false)
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => {
+            if (openDropdownId) {
+                setOpenDropdownId(null)
+                setDeleteConfirmId(null)
+                setEditingContactId(null)
+                setEditingName('')
+            }
+        }
+
+        document.addEventListener('click', handleClickOutside)
+        return () => document.removeEventListener('click', handleClickOutside)
+    }, [openDropdownId])
 
     // Message cache per contact - stores messages in memory for instant switching
     const messageCacheRef = useRef<Map<string, {
@@ -340,7 +360,7 @@ export function ChatInterface({
     useEffect(() => {
         markAsRead()
         setIsChatVisible(true)
-        
+
         // Clean up: mark chat as not visible when leaving
         return () => {
             setIsChatVisible(false)
@@ -386,7 +406,7 @@ export function ChatInterface({
 
         // Check if we have cached messages for this contact
         const cached = messageCacheRef.current.get(contactId)
-        
+
         if (cached && cached.messages.length > 0) {
             // CACHE HIT: Show cached messages instantly (no loading!)
             setMessages(cached.messages)
@@ -394,12 +414,12 @@ export function ChatInterface({
             setHasMore(cached.hasMore)
             setIsLoadingMessages(false)
             setLoadingContactId(null) // Clear loading state immediately for cached content
-            
+
             // Scroll to bottom immediately
             requestAnimationFrame(() => {
                 scrollToBottom('instant')
             })
-            
+
             // Fetch new messages in background (if any)
             const lastMessage = cached.messages[cached.messages.length - 1]
             if (lastMessage) {
@@ -409,7 +429,7 @@ export function ChatInterface({
                             const existingIds = new Set(prev.map(m => m.id))
                             const trulyNew = newMsgs.filter((m: Message) => !existingIds.has(m.id))
                             if (trulyNew.length > 0) {
-                                const updated = [...prev, ...trulyNew].sort((a, b) => 
+                                const updated = [...prev, ...trulyNew].sort((a, b) =>
                                     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
                                 )
                                 // Update cache
@@ -436,19 +456,19 @@ export function ChatInterface({
             getMessages(contactId, 0, MESSAGES_PER_PAGE).then(msgs => {
                 const messageList = msgs || []
                 const hasMorePages = messageList.length === MESSAGES_PER_PAGE
-                
+
                 setMessages(messageList)
                 setHasMore(hasMorePages)
                 setIsLoadingMessages(false)
                 setLoadingContactId(null) // Clear loading state when messages are loaded
-                
+
                 // Save to cache
                 messageCacheRef.current.set(contactId, {
                     messages: messageList,
                     page: 0,
                     hasMore: hasMorePages
                 })
-                
+
                 requestAnimationFrame(() => {
                     scrollToBottom('instant')
                 })
@@ -468,28 +488,28 @@ export function ChatInterface({
             try {
                 // Only fetch messages after the last known timestamp
                 const newMessages = await getNewMessages(contactId, lastMessage.created_at)
-                
+
                 if (newMessages && newMessages.length > 0) {
                     // Use setMessages with callback to get fresh state and avoid duplicates
                     setMessages(prev => {
                         // Check for optimistic messages (temp-*) that should be replaced
                         const tempMessages = prev.filter(m => m.id.startsWith('temp-'))
                         const realMessages = prev.filter(m => !m.id.startsWith('temp-'))
-                        
+
                         const existingIds = new Set(realMessages.map(m => m.id))
                         const trulyNew = newMessages.filter((m: Message) => !existingIds.has(m.id))
-                        
+
                         if (trulyNew.length > 0) {
                             // For each new message, check if it matches an optimistic message (same body)
                             // and replace it, or add it as new
                             let updatedMessages = [...realMessages]
-                            
+
                             for (const newMsg of trulyNew) {
                                 // Find matching optimistic message by body and sender_type
                                 const matchingOptimistic = tempMessages.find(
                                     t => t.body === newMsg.body && t.sender_type === newMsg.sender_type
                                 )
-                                
+
                                 if (matchingOptimistic) {
                                     // This is our optimistic message confirmed - already in list, just skip
                                     // (the optimistic was filtered out, so we add the real one)
@@ -500,17 +520,17 @@ export function ChatInterface({
                                     updatedMessages.push(newMsg)
                                 }
                             }
-                            
+
                             // Sort by created_at to maintain order
-                            updatedMessages.sort((a, b) => 
+                            updatedMessages.sort((a, b) =>
                                 new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
                             )
-                            
+
                             // Scroll to bottom when new messages arrive
                             requestAnimationFrame(() => {
                                 scrollToBottom('smooth')
                             })
-                            
+
                             return updatedMessages
                         }
                         return prev
@@ -529,7 +549,7 @@ export function ChatInterface({
     // Keep messagesRef in sync with messages state AND update cache
     useEffect(() => {
         messagesRef.current = messages
-        
+
         // Update cache for current contact
         if (selectedContact?.id && messages.length > 0) {
             const currentCache = messageCacheRef.current.get(selectedContact.id)
@@ -690,6 +710,81 @@ export function ChatInterface({
         router.replace(`${pathname}?${params.toString()}`)
     }
 
+    const handleUpdateContactName = async (contactId: string, newName: string) => {
+        if (!newName.trim()) {
+            toast.error('O nome não pode estar vazio')
+            return
+        }
+
+        try {
+            await updateContactName(contactId, newName)
+
+            // Refresh contact lists
+            const data = await getChatData()
+            setMyChats(data.myChats || [])
+            setAwaitingChats(data.awaitingChats || [])
+            setAllChats(data.allChats || [])
+            setFinishedChats(data.finishedChats || [])
+
+            // Update selected contact if it was the one being edited
+            if (selectedContact?.id === contactId) {
+                setSelectedContact(prev => prev ? { ...prev, name: newName } : null)
+            }
+
+            setEditingContactId(null)
+            setEditingName('')
+            setOpenDropdownId(null)
+            toast.success('Nome atualizado com sucesso')
+        } catch (error) {
+            console.error('Error updating contact name:', error)
+            toast.error('Erro ao atualizar nome')
+        }
+    }
+
+    const handleDeleteConversation = async (contactId: string, contactName: string) => {
+        try {
+            await deleteConversation(contactId)
+
+            // Clear selection if deleted contact was selected
+            if (selectedContact?.id === contactId) {
+                setSelectedContact(null)
+            }
+
+            // Refresh contact lists
+            const data = await getChatData()
+            setMyChats(data.myChats || [])
+            setAwaitingChats(data.awaitingChats || [])
+            setAllChats(data.allChats || [])
+            setFinishedChats(data.finishedChats || [])
+
+            setDeleteConfirmId(null)
+            setOpenDropdownId(null)
+            toast.success(`Conversa com ${contactName} excluída`)
+        } catch (error) {
+            console.error('Error deleting conversation:', error)
+            toast.error('Erro ao excluir conversa')
+        }
+    }
+
+    // Filter contacts based on search query
+    const filterContacts = (contacts: Contact[]) => {
+        if (!searchQuery.trim()) return contacts
+        const query = searchQuery.toLowerCase()
+        return contacts.filter(contact =>
+            contact.name.toLowerCase().includes(query) ||
+            contact.phone.toLowerCase().includes(query)
+        )
+    }
+
+    // Get filtered contacts for current tab
+    const filteredContacts = useMemo(() => {
+        const currentList = activeTab === 'mine' ? myChats :
+            activeTab === 'awaiting' ? awaitingChats :
+                activeTab === 'all' ? allChats :
+                    finishedChats
+        return filterContacts(currentList || [])
+    }, [activeTab, myChats, awaitingChats, allChats, finishedChats, searchQuery])
+
     return (
         <div className="flex h-full gap-0 rounded-2xl overflow-hidden glass animate-fade-in">
 
@@ -704,6 +799,28 @@ export function ChatInterface({
                         <Plus className="h-4 w-4" />
                         Nova Conversa
                     </button>
+                </div>
+
+                {/* Search Box */}
+                <div className="p-3 border-b border-border/50">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nome ou número..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-background/50 border border-border/50 rounded-xl text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Tabs */}
@@ -758,87 +875,186 @@ export function ChatInterface({
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto">
-                    {(activeTab === 'mine' ? myChats : activeTab === 'awaiting' ? awaitingChats : activeTab === 'all' ? allChats : finishedChats)?.map((contact, index) => (
-                        <button
+                    {filteredContacts?.map((contact, index) => (
+                        <div
                             key={contact.id}
-                            onClick={() => handleContactSelect(contact)}
                             className={cn(
-                                "w-full text-left p-4 hover:bg-muted/30 transition-all duration-200 border-b border-border/30 animate-fade-in",
+                                "relative w-full text-left p-4 hover:bg-muted/30 transition-all duration-200 border-b border-border/30 animate-fade-in",
                                 selectedContact?.id === contact.id ? "bg-primary/10 border-l-2 border-l-primary" : ""
                             )}
                             style={{ animationDelay: `${index * 30}ms` }}
                         >
-                            {loadingContactId === contact.id ? (
-                                /* Loading State */
-                                <div className="flex items-center gap-3 mb-1">
-                                    <div className="relative h-11 w-11 flex-shrink-0">
-                                        <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
-                                            <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                            {/* Main Contact Area (Clickable) */}
+                            <div
+                                onClick={() => handleContactSelect(contact)}
+                                className="cursor-pointer"
+                            >
+                                {loadingContactId === contact.id ? (
+                                    /* Loading State */
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <div className="relative h-11 w-11 flex-shrink-0">
+                                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+                                                <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-bold text-foreground truncate">{contact.name}</span>
+                                            </div>
+                                            <p className="text-xs text-primary/70 animate-pulse">Carregando conversa...</p>
                                         </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start">
-                                            <span className="font-bold text-foreground truncate">{contact.name}</span>
-                                        </div>
-                                        <p className="text-xs text-primary/70 animate-pulse">Carregando conversa...</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Normal State */
-                                <div className="flex items-center gap-3 mb-1">
-                                    <div className="relative h-11 w-11 flex-shrink-0">
-                                        {contact.avatar_url ? (
-                                            <img src={contact.avatar_url} alt={contact.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border/50" />
-                                        ) : (
-                                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
-                                                {contact.name.charAt(0).toUpperCase()}
-                                            </div>
-                                        )}
-                                        {activeTab === 'awaiting' && (
-                                            <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-warning flex items-center justify-center">
-                                                <Clock className="h-2.5 w-2.5 text-warning-foreground" />
-                                            </div>
-                                        )}
-                                        {activeTab === 'finished' && (
-                                            <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-success flex items-center justify-center">
-                                                <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
-                                            </div>
-                                        )}
-                                        {activeTab !== 'awaiting' && activeTab !== 'finished' && (contact.unread_count ?? 0) > 0 && (
-                                            <div className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-primary flex items-center justify-center animate-pulse">
-                                                <span className="text-[10px] font-bold text-primary-foreground">
-                                                    {contact.unread_count! > 99 ? '99+' : contact.unread_count}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start">
-                                            <span className="font-bold text-foreground truncate">{contact.name}</span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground truncate">
-                                            {contact.last_message ? (
-                                                <>
-                                                    {contact.last_message.sender_type === 'user' && (
-                                                        <span className="text-primary/70">Você: </span>
-                                                    )}
-                                                    {contact.last_message.media_type === 'audio' ? (
-                                                        '🎵 Áudio'
-                                                    ) : contact.last_message.media_type === 'image' ? (
-                                                        '📷 Imagem'
-                                                    ) : (
-                                                        contact.last_message.body || 'Mensagem'
-                                                    )}
-                                                </>
+                                ) : (
+                                    /* Normal State */
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative h-11 w-11 flex-shrink-0">
+                                            {contact.avatar_url ? (
+                                                <img src={contact.avatar_url} alt={contact.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border/50" />
                                             ) : (
-                                                contact.phone
+                                                <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
+                                                    {contact.name.charAt(0).toUpperCase()}
+                                                </div>
                                             )}
-                                        </p>
+                                            {activeTab === 'awaiting' && (
+                                                <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-warning flex items-center justify-center">
+                                                    <Clock className="h-2.5 w-2.5 text-warning-foreground" />
+                                                </div>
+                                            )}
+                                            {activeTab === 'finished' && (
+                                                <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-success flex items-center justify-center">
+                                                    <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
+                                                </div>
+                                            )}
+                                            {activeTab !== 'awaiting' && activeTab !== 'finished' && (contact.unread_count ?? 0) > 0 && (
+                                                <div className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-primary flex items-center justify-center animate-pulse">
+                                                    <span className="text-[10px] font-bold text-primary-foreground">
+                                                        {contact.unread_count! > 99 ? '99+' : contact.unread_count}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-bold text-foreground truncate">{contact.name}</span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {contact.last_message ? (
+                                                    <>
+                                                        {contact.last_message.sender_type === 'user' && (
+                                                            <span className="text-primary/70">Você: </span>
+                                                        )}
+                                                        {contact.last_message.media_type === 'audio' ? (
+                                                            '🎵 Áudio'
+                                                        ) : contact.last_message.media_type === 'image' ? (
+                                                            '📷 Imagem'
+                                                        ) : (
+                                                            contact.last_message.body || 'Mensagem'
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    contact.phone
+                                                )}
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </button>
+                                )}
+                            </div>
+
+                            {/* Three-dot menu button */}
+                            <div className="absolute top-4 right-2">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setOpenDropdownId(openDropdownId === contact.id ? null : contact.id)
+                                        setDeleteConfirmId(null)
+                                    }}
+                                    className="p-2 hover:bg-muted/50 rounded-lg transition-colors"
+                                >
+                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                </button>
+
+                                {/* Dropdown menu */}
+                                {openDropdownId === contact.id && (
+                                    <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="absolute right-0 top-10 bg-card border border-border rounded-lg shadow-lg z-50 min-w-[200px] overflow-hidden"
+                                    >
+                                        {editingContactId === contact.id ? (
+                                            /* Edit Name Input */
+                                            <div className="p-3">
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editingName}
+                                                        onChange={(e) => setEditingName(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                handleUpdateContactName(contact.id, editingName)
+                                                            } else if (e.key === 'Escape') {
+                                                                setEditingContactId(null)
+                                                                setEditingName('')
+                                                            }
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        autoFocus
+                                                        className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                        placeholder="Novo nome..."
+                                                    />
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleUpdateContactName(contact.id, editingName)
+                                                        }}
+                                                        className="px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
+                                                    >
+                                                        <Check className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : deleteConfirmId === contact.id ? (
+                                            /* Delete Confirmation */
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleDeleteConversation(contact.id, contact.name)
+                                                }}
+                                                className="w-full px-4 py-2.5 text-left text-sm hover:bg-destructive hover:text-destructive-foreground bg-destructive/10 text-destructive transition-colors flex items-center gap-2 font-medium"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                Confirmar Exclusão?
+                                            </button>
+                                        ) : (
+                                            /* Menu Options */
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingContactId(contact.id)
+                                                        setEditingName(contact.name)
+                                                    }}
+                                                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted/50 transition-colors flex items-center gap-2 border-b border-border/50"
+                                                >
+                                                    <Edit className="h-4 w-4" />
+                                                    Editar Nome
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setDeleteConfirmId(contact.id)
+                                                    }}
+                                                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted/50 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                    Excluir Conversa
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     ))}
+
 
                     {/* Empty States */}
                     {activeTab === 'mine' && initialMyChats?.length === 0 && (
@@ -1050,7 +1266,7 @@ export function ChatInterface({
                                         } else if (inputText.trim()) {
                                             const messageBody = inputText
                                             setInputText('')
-                                            
+
                                             // OPTIMISTIC UI: Add message to list immediately
                                             const optimisticMessage: Message = {
                                                 id: `temp-${Date.now()}`, // Temporary ID
@@ -1065,7 +1281,7 @@ export function ChatInterface({
                                             requestAnimationFrame(() => {
                                                 scrollToBottom('smooth')
                                             })
-                                            
+
                                             // Send in background (don't await to not block UI)
                                             sendMessage(selectedContact.id, messageBody, orgId).catch(() => {
                                                 // On failure, could mark message as failed or remove it
