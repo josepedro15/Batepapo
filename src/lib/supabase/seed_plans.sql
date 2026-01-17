@@ -3,10 +3,10 @@
 -- Executar este script para configurar o plano
 -- =============================================
 
--- 1. Remover planos antigos (se existirem)
-DELETE FROM plan_limits WHERE price_id IN ('price_starter_monthly', 'price_pro_monthly');
-DELETE FROM prices WHERE id IN ('price_starter_monthly', 'price_pro_monthly');
-DELETE FROM products WHERE id IN ('prod_starter', 'prod_pro');
+-- 1. Desativar planos antigos e duplicados (Soft Delete para evitar erro de FK)
+UPDATE products SET active = false WHERE name = 'BatePapo Pro' AND id != 'prod_To0NHc2B5u5D2b';
+UPDATE products SET active = false WHERE id IN ('prod_starter', 'prod_pro', 'prod_batepapo');
+UPDATE prices SET active = false WHERE id IN ('price_starter_monthly', 'price_pro_monthly', 'price_batepapo_monthly');
 
 -- 2. Inserir Produto único
 INSERT INTO products (id, name, active, description)
