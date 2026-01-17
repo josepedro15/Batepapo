@@ -9,15 +9,15 @@ import { moveDeal, getMoreDeals } from '@/app/dashboard/kanban/actions'
 
 interface KanbanBoardProps {
     initialStages: any[]
-    searchQuery?: string
 }
 
-export function KanbanBoard({ initialStages, searchQuery }: KanbanBoardProps) {
+export function KanbanBoard({ initialStages }: KanbanBoardProps) {
     // Initialize stages with a default page property if valid, or empty array
-    const [stages, setStages] = useState((initialStages || []).map(s => ({ ...s, page: 1 })))
+    // Also init searchQuery for each stage
+    const [stages, setStages] = useState((initialStages || []).map(s => ({ ...s, page: 1, searchQuery: '' })))
 
     useEffect(() => {
-        setStages((initialStages || []).map(s => ({ ...s, page: 1 })))
+        setStages((initialStages || []).map(s => ({ ...s, page: 1, searchQuery: '' })))
     }, [initialStages])
 
     const [activeDeal, setActiveDeal] = useState<any>(null)
@@ -72,7 +72,8 @@ export function KanbanBoard({ initialStages, searchQuery }: KanbanBoardProps) {
         if (!stage) return
 
         const nextPage = (stage.page || 1) + 1
-        const result = await getMoreDeals(stageId, nextPage, searchQuery)
+        // Use the stage's specific search query
+        const result = await getMoreDeals(stageId, nextPage, stage.searchQuery)
 
         setStages(prev => prev.map(s => {
             if (s.id === stageId) {
@@ -87,11 +88,29 @@ export function KanbanBoard({ initialStages, searchQuery }: KanbanBoardProps) {
         }))
     }
 
+    const handleColumnSearch = async (stageId: string, term: string) => {
+        // Reset to page 1 and fetch with new term
+        const result = await getMoreDeals(stageId, 1, term)
+
+        setStages(prev => prev.map(s => {
+            if (s.id === stageId) {
+                return {
+                    ...s,
+                    deals: result.deals,
+                    hasMore: result.hasMore,
+                    page: 1,
+                    searchQuery: term
+                }
+            }
+            return s
+        }))
+    }
+
     return (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex h-full gap-6 overflow-x-auto pb-4">
                 {stages.map(stage => (
-                    <Column key={stage.id} stage={stage} onLoadMore={handleLoadMore} />
+                    <Column key={stage.id} stage={stage} onLoadMore={handleLoadMore} onSearch={handleColumnSearch} />
                 ))}
             </div>
 

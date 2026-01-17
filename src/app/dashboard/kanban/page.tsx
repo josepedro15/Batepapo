@@ -4,13 +4,11 @@ import { CreateDealDialog } from '@/components/dialogs/create-deal-dialog'
 import { ManageStagesDialog } from '@/components/dialogs/manage-stages-dialog'
 import { PipelineSelector } from '@/components/kanban/pipeline-selector'
 import { createClient } from '@/lib/supabase/server'
-import { KanbanSearch } from '@/components/kanban/kanban-search'
 import { LayoutDashboard, DollarSign, Kanban } from 'lucide-react'
 
-export default async function KanbanPage({ searchParams }: { searchParams: Promise<{ pipelineId?: string, search?: string }> }) {
+export default async function KanbanPage({ searchParams }: { searchParams: Promise<{ pipelineId?: string }> }) {
     const resolvedSearchParams = await searchParams
-    const search = resolvedSearchParams?.search || undefined
-    const { stages, pipeline, pipelines } = await getKanbanData(resolvedSearchParams.pipelineId, search)
+    const { stages, pipeline, pipelines } = await getKanbanData(resolvedSearchParams.pipelineId)
 
     // Fetch contacts for the dialog
     const supabase = await createClient()
@@ -18,13 +16,9 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
     const { data: member } = await supabase.from('organization_members').select('organization_id').eq('user_id', user!.id).single()
     const { data: contacts } = await supabase.from('contacts').select('id, name, phone').eq('organization_id', member?.organization_id)
 
-    // Calculate stats
-    const totalDeals = stages?.reduce((acc, s) => acc + (s.totalDeals || 0), 0) || 0
-    // Note: Total value is still an approximation based on loaded deals, or we could fetch a sum aggregation if critical.
-    // For now, let's keep it as sum of LOADED deals to avoid another query, or accept acceptable inaccuracy for perf.
-    // Ideally we should return totalValue from the backend too. Let's do that in a follow up if needed.
-    const totalValue = stages?.reduce((acc, s) =>
-        acc + (s.deals?.reduce((sum: number, d: any) => sum + (d.value || 0), 0) || 0), 0) || 0
+    // Calculate totals
+    const totalDeals = stages.reduce((acc, s) => acc + (s.totalDeals || 0), 0)
+    const totalValue = stages.reduce((acc, s) => acc + (s.deals?.reduce((sum: number, d: any) => sum + (d.value || 0), 0) || 0), 0)
 
     return (
         <div className="flex flex-col h-full space-y-6">
@@ -45,7 +39,6 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <KanbanSearch />
                         {/* Quick Stats */}
                         <div className="flex items-center gap-3">
                             <div className="glass px-4 py-3 rounded-xl flex items-center gap-3 hover:border-primary/20 transition-all duration-200">
@@ -81,7 +74,7 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
 
             {/* Kanban Board */}
             <div className="flex-1 overflow-hidden -mx-8 px-8">
-                <KanbanBoard initialStages={stages || []} searchQuery={search} />
+                <KanbanBoard initialStages={stages || []} />
             </div>
         </div>
     )
