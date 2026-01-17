@@ -955,6 +955,19 @@ export function ChatInterface({
                                                     contact.phone
                                                 )}
                                             </p>
+                                            {/* Tags Display */}
+                                            {contact.tags && Array.isArray(contact.tags) && contact.tags.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                    {contact.tags.map((tag: string, idx: number) => (
+                                                        <span
+                                                            key={idx}
+                                                            className="px-2 py-0.5 text-[10px] font-bold bg-primary/15 text-primary border border-primary/20 rounded-md uppercase tracking-wide"
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
