@@ -6,19 +6,35 @@ import { revalidatePath } from 'next/cache'
 const DEALS_PER_PAGE = 20
 
 // New action to fetch more deals for a specific stage
-export async function getMoreDeals(stageId: string, page: number) {
+export async function getMoreDeals(stageId: string, page: number, search?: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
     const offset = (page - 1) * DEALS_PER_PAGE
 
-    const { data: deals, error } = await supabase
+    let query = supabase
         .from('deals')
-        .select('*, contacts(name, phone)')
+        .select('*, contacts!inner(name, phone)')
         .eq('stage_id', stageId)
         .order('created_at', { ascending: false })
         .range(offset, offset + DEALS_PER_PAGE - 1)
+
+    if (search) {
+        // Filter by contact name or phone
+        // Using !inner join above ensures we only get deals with matching contacts
+        // But we need to apply the filter logic
+        // Supabase syntax for OR on foreign table columns can be tricky.
+        // Simplified approach: use the text search syntax or explicit OR
+
+        // This syntax `contacts.name.ilike.%query%,contacts.phone.ilike.%query%` works if using the foreign table alias in the select
+        // But with `!inner` join, we can filter using the embedded resource syntax or simplified `or`
+
+        // Let's try the standard PostgREST syntax for filtering related resources
+        query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
+    }
+
+    const { data: deals, error } = await query
 
     if (error) {
         console.error('Error fetching more deals:', error)
@@ -32,7 +48,7 @@ export async function getMoreDeals(stageId: string, page: number) {
 }
 
 // Initial Kanban load - fetches stages and first page of deals for each stage
-export async function getKanbanData(selectedPipelineId?: string) {
+export async function getKanbanData(selectedPipelineId?: string, search?: string) {
     const supabase = await createClient()
 
     // 1. Get Org using the user
@@ -90,19 +106,68 @@ export async function getKanbanData(selectedPipelineId?: string) {
 
     // Fetch first page of deals for EACH stage and total counts
     const processedStages = await Promise.all((stages || []).map(async (stage) => {
-        // Fetch first page of deals
-        const { data: deals } = await supabase
+        // Prepare base queries
+        let dealsQuery = supabase
             .from('deals')
-            .select('*, contacts(name, phone)')
+            .select('*, contacts!inner(name, phone)')
             .eq('stage_id', stage.id)
             .order('created_at', { ascending: false })
             .limit(DEALS_PER_PAGE)
 
-        // Get total count (for the header badge)
-        const { count } = await supabase
+        let countQuery = supabase
             .from('deals')
-            .select('*', { count: 'exact', head: true })
+            .select('*, contacts!inner(name, phone)', { count: 'exact', head: true })
             .eq('stage_id', stage.id)
+
+        // Apply Search
+        if (search) {
+            dealsQuery = dealsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
+            countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
+        } else {
+            // If no search, we don't need !inner, we can use left join (standard)
+            // But actually, for kanban card display we need contact name. 
+            // With !inner it forces contact existence. Without it (if we just put contacts(...)) it's left join.
+            // Let's keep !inner only if filtering? No, safer to keep consistency: 
+            // If search is empty, we don't filter.
+            // Actually, to filter by related table we MUST use !inner join. 
+            // So if search, use !inner. If not search, standard select is fine (supabase uses left join by default for `select`).
+
+            // Wait, the select string above `contacts!inner` hardcodes it.
+            // If search is not present, we should probably just use `contacts(name, phone)` to match previous behavior
+            // i.e. not filtering out deals with deleted contacts (if that's even possible/desired).
+            // However, `!inner` is required for filtering. 
+            // Let's adjust the select string dynamically.
+
+            // Actually, my `select` string in line 96 is constant. 
+            // Let's make it dynamic for filtering.
+        }
+
+        // Re-declaring queries to handle the dynamic select for filtering
+        let selectString = '*, contacts(name, phone)'
+        if (search) {
+            selectString = '*, contacts!inner(name, phone)'
+        }
+
+        dealsQuery = supabase
+            .from('deals')
+            .select(selectString)
+            .eq('stage_id', stage.id)
+            .order('created_at', { ascending: false })
+            .limit(DEALS_PER_PAGE)
+
+        countQuery = supabase
+            .from('deals')
+            .select(selectString, { count: 'exact', head: true })
+            .eq('stage_id', stage.id)
+
+        if (search) {
+            dealsQuery = dealsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
+            countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
+        }
+
+
+        const { data: deals } = await dealsQuery
+        const { count } = await countQuery
 
         return {
             ...stage,

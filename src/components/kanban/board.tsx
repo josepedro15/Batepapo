@@ -9,9 +9,10 @@ import { moveDeal, getMoreDeals } from '@/app/dashboard/kanban/actions'
 
 interface KanbanBoardProps {
     initialStages: any[]
+    searchQuery?: string
 }
 
-export function KanbanBoard({ initialStages }: KanbanBoardProps) {
+export function KanbanBoard({ initialStages, searchQuery }: KanbanBoardProps) {
     // Initialize stages with a default page property if valid, or empty array
     const [stages, setStages] = useState((initialStages || []).map(s => ({ ...s, page: 1 })))
 
@@ -71,7 +72,7 @@ export function KanbanBoard({ initialStages }: KanbanBoardProps) {
         if (!stage) return
 
         const nextPage = (stage.page || 1) + 1
-        const result = await getMoreDeals(stageId, nextPage)
+        const result = await getMoreDeals(stageId, nextPage, searchQuery)
 
         setStages(prev => prev.map(s => {
             if (s.id === stageId) {

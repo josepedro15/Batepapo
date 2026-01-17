@@ -4,11 +4,13 @@ import { CreateDealDialog } from '@/components/dialogs/create-deal-dialog'
 import { ManageStagesDialog } from '@/components/dialogs/manage-stages-dialog'
 import { PipelineSelector } from '@/components/kanban/pipeline-selector'
 import { createClient } from '@/lib/supabase/server'
+import { KanbanSearch } from '@/components/kanban/kanban-search'
 import { LayoutDashboard, DollarSign, Kanban } from 'lucide-react'
 
-export default async function KanbanPage({ searchParams }: { searchParams: Promise<{ pipelineId?: string }> }) {
+export default async function KanbanPage({ searchParams }: { searchParams: Promise<{ pipelineId?: string, search?: string }> }) {
     const resolvedSearchParams = await searchParams
-    const { stages, pipeline, pipelines } = await getKanbanData(resolvedSearchParams.pipelineId)
+    const search = resolvedSearchParams?.search || undefined
+    const { stages, pipeline, pipelines } = await getKanbanData(resolvedSearchParams.pipelineId, search)
 
     // Fetch contacts for the dialog
     const supabase = await createClient()
@@ -42,41 +44,44 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
                         </div>
                     </div>
 
-                    {/* Quick Stats */}
-                    <div className="flex items-center gap-3">
-                        <div className="glass px-4 py-3 rounded-xl flex items-center gap-3 hover:border-primary/20 transition-all duration-200">
-                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20">
-                                <LayoutDashboard className="h-5 w-5 text-primary" />
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <KanbanSearch />
+                        {/* Quick Stats */}
+                        <div className="flex items-center gap-3">
+                            <div className="glass px-4 py-3 rounded-xl flex items-center gap-3 hover:border-primary/20 transition-all duration-200">
+                                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20">
+                                    <LayoutDashboard className="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-foreground">{totalDeals}</p>
+                                    <p className="text-xs text-muted-foreground">Negócios</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-2xl font-bold text-foreground">{totalDeals}</p>
-                                <p className="text-xs text-muted-foreground">Negócios</p>
+                            <div className="glass px-4 py-3 rounded-xl flex items-center gap-3 hover:border-success/20 transition-all duration-200">
+                                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center border border-success/20">
+                                    <DollarSign className="h-5 w-5 text-success" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-foreground">
+                                        R$ {totalValue.toLocaleString('pt-BR')}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">Pipeline</p>
+                                </div>
                             </div>
                         </div>
-                        <div className="glass px-4 py-3 rounded-xl flex items-center gap-3 hover:border-success/20 transition-all duration-200">
-                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center border border-success/20">
-                                <DollarSign className="h-5 w-5 text-success" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-foreground">
-                                    R$ {totalValue.toLocaleString('pt-BR')}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Pipeline</p>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                        <ManageStagesDialog initialStages={stages || []} pipelineId={pipeline?.id || ''} />
-                        <CreateDealDialog stages={stages || []} contacts={contacts || []} />
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                            <ManageStagesDialog initialStages={stages || []} pipelineId={pipeline?.id || ''} />
+                            <CreateDealDialog stages={stages || []} contacts={contacts || []} />
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Kanban Board */}
             <div className="flex-1 overflow-hidden -mx-8 px-8">
-                <KanbanBoard initialStages={stages || []} />
+                <KanbanBoard initialStages={stages || []} searchQuery={search} />
             </div>
         </div>
     )
