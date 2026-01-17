@@ -40,6 +40,9 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
     }, [contacts])
 
     const fetchContacts = useCallback(async (pageNum: number, searchTerm: string, reset: boolean = false) => {
+        // Prevent duplicate requests for the same page/search combo
+        if (!reset && (isLoadingContacts || !hasMore)) return
+
         try {
             setIsLoadingContacts(true)
 
@@ -61,21 +64,18 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             if (response.ok) {
                 if (reset) {
                     setContacts(data.contacts)
-                    setHasMore(data.contacts.length === 20)
+                    setHasMore(data.contacts.length >= 20)
                 } else {
-                    const currentContacts = contactsRef.current
-                    const newContacts = data.contacts.filter((newC: WhatsAppContact) =>
-                        !currentContacts.some(existing => existing.id === newC.id)
-                    )
+                    setContacts(prev => {
+                        // Create a map of existing IDs for faster lookup
+                        const existingIds = new Set(prev.map(c => c.id))
+                        const newContacts = data.contacts.filter((c: WhatsAppContact) => !existingIds.has(c.id))
 
-                    // If we received data but everything was a duplicate, stop pagination
-                    if (data.contacts.length > 0 && newContacts.length === 0) {
-                        setHasMore(false)
-                    } else {
-                        setHasMore(data.contacts.length === 20)
-                    }
+                        return [...prev, ...newContacts]
+                    })
 
-                    setContacts(prev => [...prev, ...newContacts])
+                    // Only stop if we got fewer results than requested
+                    setHasMore(data.contacts.length >= 20)
                 }
             } else {
                 const errorData = await response.json().catch(() => ({}))
@@ -95,7 +95,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
         } finally {
             setIsLoadingContacts(false)
         }
-    }, [orgId])
+    }, [orgId, hasMore, isLoadingContacts])
 
     // Debounced search
     const debouncedSearch = useCallback(
@@ -108,11 +108,15 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
 
     useEffect(() => {
         if (open) {
-            fetchContacts(1, '')
+            // Reset state when opening
             setPage(1)
             setSearch('')
             setName('')
             setPhone('')
+            setContacts([])
+            setHasMore(true)
+            // Initial fetch
+            fetchContacts(1, '', true)
         }
     }, [open, fetchContacts])
 
@@ -122,7 +126,7 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             setPage(nextPage)
             fetchContacts(nextPage, search)
         }
-    }, [inView, hasMore, isLoadingContacts, page, search, fetchContacts])
+    }, [inView, hasMore, isLoadingContacts, search, fetchContacts])
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value
