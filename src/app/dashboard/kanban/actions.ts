@@ -3,6 +3,38 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// Helper to fetch all deals with pagination (bypasses 1000 limit)
+async function fetchAllDeals(supabase: any, pipelineId: string) {
+    const allDeals: any[] = []
+    const pageSize = 1000
+    let page = 0
+    let hasMore = true
+
+    while (hasMore) {
+        const { data: deals, error } = await supabase
+            .from('deals')
+            .select('*, contacts(name, phone)')
+            .eq('pipeline_id', pipelineId)
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (error) {
+            console.error('Error fetching deals:', error)
+            break
+        }
+
+        if (deals && deals.length > 0) {
+            allDeals.push(...deals)
+            hasMore = deals.length === pageSize
+            page++
+        } else {
+            hasMore = false
+        }
+    }
+
+    return allDeals
+}
+
 // Modified getKanbanData to accept optional pipelineId
 export async function getKanbanData(selectedPipelineId?: string) {
     const supabase = await createClient()
@@ -47,20 +79,35 @@ export async function getKanbanData(selectedPipelineId?: string) {
             throw new Error(`Failed to create pipeline: ${error?.message || 'Unknown error'}`)
         }
         pipeline = newPipeline
-        // Optimistically add to pipelines list if it was empty
     }
 
-    // Fetch stages for the selected pipeline
+    // Fetch stages (without deals - we'll fetch those separately)
     const { data: stages, error: stagesError } = await supabase
         .from('stages')
-        .select('*, deals(*, contacts(name, phone))')
+        .select('*')
         .eq('pipeline_id', pipeline.id)
         .order('position')
 
-    // Sort deals within stages (optional, but good)
+    if (stagesError) {
+        console.error('Error fetching stages:', stagesError)
+    }
+
+    // Fetch ALL deals for this pipeline (bypasses 1000 limit)
+    const allDeals = await fetchAllDeals(supabase, pipeline.id)
+
+    // Group deals by stage_id
+    const dealsByStage = new Map<string, any[]>()
+    for (const deal of allDeals) {
+        if (!dealsByStage.has(deal.stage_id)) {
+            dealsByStage.set(deal.stage_id, [])
+        }
+        dealsByStage.get(deal.stage_id)!.push(deal)
+    }
+
+    // Combine stages with their deals
     const processedStages = stages?.map(stage => ({
         ...stage,
-        deals: stage.deals?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) // Newest first
+        deals: dealsByStage.get(stage.id) || []
     }))
 
     return { stages: processedStages, pipeline, pipelines }
