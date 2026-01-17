@@ -44,24 +44,12 @@ export default async function SettingsPage() {
         .single()
 
     // Format subscription for the card
-    const subscription = subData ? {
-        planName: subData.prices?.products?.name || 'Desconhecido',
-        status: subData.status,
-        currentPeriodEnd: subData.current_period_end,
-        limits: {
-            users: subData.prices?.plan_limits?.[0]?.max_users || 1, // plan_limits comes as array because of 1-to-1 implicit logic in query sometimes, checking safely
-            contacts: subData.prices?.plan_limits?.[0]?.max_contacts || 100,
-            pipelines: subData.prices?.plan_limits?.[0]?.max_pipelines || 1
-        }
-    } : undefined
-
-    // Fix for limits if they come as object (depends on supabase generation, usually array with select maps)
-    // Actually in the query above: prices -> plan_limits. It's often an array `plan_limits[]` unless `single()` is used on the join, which `select` syntax doesn't fully enforce. 
-    // Let's assume array for safety: `plan_limits: any`
-    const limitsData = (subData?.prices as any)?.plan_limits?.[0] || (subData?.prices as any)?.plan_limits
+    const priceData = Array.isArray(subData?.prices) ? subData.prices[0] : (subData?.prices as any)
+    const productsData = Array.isArray(priceData?.products) ? priceData.products[0] : priceData?.products
+    const limitsData = Array.isArray(priceData?.plan_limits) ? priceData.plan_limits[0] : priceData?.plan_limits
 
     const formattedSubscription = subData ? {
-        planName: (subData.prices as any)?.products?.name || 'Plano',
+        planName: productsData?.name || 'Plano',
         status: subData.status,
         currentPeriodEnd: subData.current_period_end,
         limits: {
