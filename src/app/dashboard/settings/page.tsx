@@ -6,7 +6,8 @@ import { TagManagement } from '@/components/settings/tag-management'
 import { WhatsAppConnectionCard } from '@/components/settings/whatsapp-status-card'
 import { AISettingsCard } from '@/components/settings/ai-settings-card'
 import { MessageSettingsCard } from '@/components/settings/message-settings-card'
-import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound } from 'lucide-react'
+import { SubscriptionCard } from '@/components/settings/subscription-card'
+import { Key, Trash2, Copy, Sparkles, Users, Smartphone, Tag, KeyRound, CreditCard } from 'lucide-react'
 
 export default async function SettingsPage() {
     const supabase = await createClient()
@@ -24,6 +25,53 @@ export default async function SettingsPage() {
         .eq('organization_id', membership?.organization_id)
         .order('role')
 
+    // Fetch Subscription
+    const { data: subData } = await supabase
+        .from('subscriptions')
+        .select(`
+            status,
+            current_period_end,
+            prices (
+                products (name),
+                plan_limits (max_users, max_contacts, max_pipelines)
+            )
+        `)
+        // Check for active or past_due subscriptions (so we show something even if payment failed)
+        .in('status', ['trialing', 'active', 'past_due', 'canceled'])
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+    // Format subscription for the card
+    const subscription = subData ? {
+        planName: subData.prices?.products?.name || 'Desconhecido',
+        status: subData.status,
+        currentPeriodEnd: subData.current_period_end,
+        limits: {
+            users: subData.prices?.plan_limits?.[0]?.max_users || 1, // plan_limits comes as array because of 1-to-1 implicit logic in query sometimes, checking safely
+            contacts: subData.prices?.plan_limits?.[0]?.max_contacts || 100,
+            pipelines: subData.prices?.plan_limits?.[0]?.max_pipelines || 1
+        }
+    } : undefined
+
+    // Fix for limits if they come as object (depends on supabase generation, usually array with select maps)
+    // Actually in the query above: prices -> plan_limits. It's often an array `plan_limits[]` unless `single()` is used on the join, which `select` syntax doesn't fully enforce. 
+    // Let's assume array for safety: `plan_limits: any`
+    const limitsData = (subData?.prices as any)?.plan_limits?.[0] || (subData?.prices as any)?.plan_limits
+
+    const formattedSubscription = subData ? {
+        planName: (subData.prices as any)?.products?.name || 'Plano',
+        status: subData.status,
+        currentPeriodEnd: subData.current_period_end,
+        limits: {
+            users: limitsData?.max_users || 1,
+            contacts: limitsData?.max_contacts || 100,
+            pipelines: limitsData?.max_pipelines || 1
+        }
+    } : undefined
+
+
     return (
         <div className="min-h-[calc(100vh-6rem)] space-y-8">
             {/* Header com gradiente decorativo */}
@@ -40,6 +88,19 @@ export default async function SettingsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Seção: Assinatura (NOVO) */}
+            <section className="animate-fade-in" style={{ animationDelay: '50ms' }}>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <CreditCard className="h-4 w-4 text-primary" />
+                    </div>
+                    <h2 className="text-headline text-foreground">Assinatura</h2>
+                </div>
+                <div className="max-w-3xl">
+                    <SubscriptionCard subscription={formattedSubscription} />
+                </div>
+            </section>
 
             {/* Seção: Equipe e WhatsApp */}
             <section className="animate-fade-in" style={{ animationDelay: '100ms' }}>
