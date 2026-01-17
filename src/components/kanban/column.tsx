@@ -56,6 +56,11 @@ export function Column({ stage, onLoadMore, onSearch }: ColumnProps) {
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                         {stage.totalDeals || 0}
                     </span>
+                    {stage.compute_value && (
+                        <span className="ml-2 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 text-xs font-medium">
+                            R$ {(stage.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                    )}
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background/80">
                     <MoreHorizontal className="h-4 w-4 text-muted-foreground" />

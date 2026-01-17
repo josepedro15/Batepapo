@@ -52,11 +52,21 @@ export function KanbanBoard({ initialStages }: KanbanBoardProps) {
         if (sourceStage.id !== destStage.id) {
             const newStages = stages.map(stage => {
                 if (stage.id === sourceStage.id) {
-                    return { ...stage, deals: stage.deals.filter((d: any) => d.id !== activeDealId), totalDeals: (stage.totalDeals || 0) - 1 }
+                    return {
+                        ...stage,
+                        deals: stage.deals.filter((d: any) => d.id !== activeDealId),
+                        totalDeals: (stage.totalDeals || 0) - 1,
+                        totalValue: (stage.totalValue || 0) - (activeDeal.value || 0)
+                    }
                 }
                 if (stage.id === destStage.id) {
                     const movedDeal = { ...activeDeal, stage_id: destStage.id }
-                    return { ...stage, deals: [movedDeal, ...stage.deals], totalDeals: (stage.totalDeals || 0) + 1 }
+                    return {
+                        ...stage,
+                        deals: [movedDeal, ...stage.deals],
+                        totalDeals: (stage.totalDeals || 0) + 1,
+                        totalValue: (stage.totalValue || 0) + (activeDeal.value || 0)
+                    }
                 }
                 return stage
             })

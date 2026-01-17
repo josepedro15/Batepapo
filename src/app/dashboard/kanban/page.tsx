@@ -18,7 +18,11 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
 
     // Calculate totals
     const totalDeals = stages.reduce((acc, s) => acc + (s.totalDeals || 0), 0)
-    const totalValue = stages.reduce((acc, s) => acc + (s.deals?.reduce((sum: number, d: any) => sum + (d.value || 0), 0) || 0), 0)
+    // Only sum values of stages that have compute_value = true
+    const totalValue = stages.reduce((acc, s) => {
+        if (!s.compute_value) return acc
+        return acc + (s.totalValue || 0)
+    }, 0)
 
     return (
         <div className="flex flex-col h-full space-y-6">

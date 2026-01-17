@@ -93,10 +93,10 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
         pipeline = newPipeline
     }
 
-    // Fetch stages (without deals)
+    // Fetch stages details (without deals)
     const { data: stages, error: stagesError } = await supabase
         .from('stages')
-        .select('*')
+        .select('*, deals(count)')
         .eq('pipeline_id', pipeline.id)
         .order('position')
 
@@ -104,58 +104,49 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
         console.error('Error fetching stages:', stagesError)
     }
 
-    // Fetch first page of deals for EACH stage and total counts
+    // NEW: Fetch optimized stats (count, sum value, compute_value) using DB function
+    // This assumes the user has run the migration script
+    const { data: stageStats, error: statsError } = await supabase
+        .rpc('get_kanban_stats', { pipeline_uuid: pipeline.id })
+
+    if (statsError) {
+        console.warn('Could not fetch optimized stats (rpc get_kanban_stats). User might not have run migration.', statsError)
+    }
+
+    // Map stats for easy lookup
+    const statsMap = new Map()
+    if (stageStats) {
+        stageStats.forEach((stat: any) => {
+            statsMap.set(stat.stage_id, stat)
+        })
+    }
+
+    // Fetch first page of deals for EACH stage
     const processedStages = await Promise.all((stages || []).map(async (stage) => {
-        // Prepare base queries
-        let dealsQuery = supabase
-            .from('deals')
-            .select('*, contacts!inner(name, phone)')
-            .eq('stage_id', stage.id)
-            .order('created_at', { ascending: false })
-            .limit(DEALS_PER_PAGE)
+        // Fallback or use RPC data
+        const stat = statsMap.get(stage.id)
+        const totalDeals = stat ? stat.total_count : 0
+        const totalValue = stat ? stat.total_value : 0
 
-        let countQuery = supabase
-            .from('deals')
-            .select('*, contacts!inner(name, phone)', { count: 'exact', head: true })
-            .eq('stage_id', stage.id)
+        // Note: stage object from simplified select above might not have compute_value if schema not updated yet in types, 
+        // but `select('*')` gets it. The RPC also returns it.
+        // Let's ensure we use the compute_value from RPC if available, or fall back to stage row (if column exists)
+        const computeValue = stat ? stat.compute_value : (stage.compute_value || false)
 
-        // Apply Search
-        if (search) {
-            dealsQuery = dealsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
-            countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
-        } else {
-            // If no search, we don't need !inner, we can use left join (standard)
-            // But actually, for kanban card display we need contact name. 
-            // With !inner it forces contact existence. Without it (if we just put contacts(...)) it's left join.
-            // Let's keep !inner only if filtering? No, safer to keep consistency: 
-            // If search is empty, we don't filter.
-            // Actually, to filter by related table we MUST use !inner join. 
-            // So if search, use !inner. If not search, standard select is fine (supabase uses left join by default for `select`).
-
-            // Wait, the select string above `contacts!inner` hardcodes it.
-            // If search is not present, we should probably just use `contacts(name, phone)` to match previous behavior
-            // i.e. not filtering out deals with deleted contacts (if that's even possible/desired).
-            // However, `!inner` is required for filtering. 
-            // Let's adjust the select string dynamically.
-
-            // Actually, my `select` string in line 96 is constant. 
-            // Let's make it dynamic for filtering.
-        }
-
-        // Re-declaring queries to handle the dynamic select for filtering
+        // Prepare base queries for deals
         let selectString = '*, contacts(name, phone)'
         if (search) {
             selectString = '*, contacts!inner(name, phone)'
         }
 
-        dealsQuery = supabase
+        let dealsQuery = supabase
             .from('deals')
             .select(selectString)
             .eq('stage_id', stage.id)
             .order('created_at', { ascending: false })
             .limit(DEALS_PER_PAGE)
 
-        countQuery = supabase
+        let countQuery = supabase
             .from('deals')
             .select(selectString, { count: 'exact', head: true })
             .eq('stage_id', stage.id)
@@ -165,14 +156,34 @@ export async function getKanbanData(selectedPipelineId?: string, search?: string
             countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`, { foreignTable: 'contacts' })
         }
 
-
         const { data: deals } = await dealsQuery
-        const { count } = await countQuery
+
+        // If searching, we need to get the count from the query because the RPC stats are global for the stage (unfiltered)
+        let finalTotalDeals = totalDeals
+        let finalTotalValue = totalValue
+
+        if (search) {
+            const { count } = await countQuery
+            finalTotalDeals = count || 0
+            // When searching, we don't easily get the sum of values for filtered items without another query
+            // For now, let's just leave sum as is (global) or set to 0? 
+            // Better to leave global sum or implement filtered sum?
+            // User requested sum of stage. Usually pipeline value is global.
+            // If filtering, maybe we just show the filtered deals and keep the global stage value? 
+            // Or maybe Recalculate? For MVP performance, keeping global value is safer/faster.
+            // But let's check current implementation: previously we calculated sum in JS.
+            // If we want exact sum of filtered items we need a query `sum(value)`.
+            // Let's stick to RPC global stats when NOT searching.
+            // When searching, let's keep the global value in headers for now as the prompt didn't specify 'search filters value sum'
+            // and the user specifically asked for "Optionally include stage in global pipeline value".
+        }
 
         return {
             ...stage,
+            compute_value: computeValue,
             deals: deals || [],
-            totalDeals: count || 0,
+            totalDeals: finalTotalDeals,
+            totalValue: finalTotalValue,
             hasMore: (deals?.length || 0) === DEALS_PER_PAGE
         }
     }))

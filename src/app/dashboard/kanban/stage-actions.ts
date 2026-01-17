@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function createStage(pipelineId: string, name: string, color: string) {
+export async function createStage(pipelineId: string, name: string, color: string, compute_value: boolean = false) {
     const supabase = await createClient()
 
     // Get the highest position
@@ -22,7 +22,8 @@ export async function createStage(pipelineId: string, name: string, color: strin
             pipeline_id: pipelineId,
             name,
             color,
-            position: newPosition
+            position: newPosition,
+            compute_value
         })
         .select()
         .single()
@@ -35,12 +36,13 @@ export async function createStage(pipelineId: string, name: string, color: strin
     return data
 }
 
-export async function updateStage(stageId: string, name?: string, color?: string) {
+export async function updateStage(stageId: string, name?: string, color?: string, compute_value?: boolean) {
     const supabase = await createClient()
 
     const updates: any = {}
     if (name !== undefined) updates.name = name
     if (color !== undefined) updates.color = color
+    if (compute_value !== undefined) updates.compute_value = compute_value
 
     const { data, error } = await supabase
         .from('stages')
