@@ -159,9 +159,14 @@ export async function getChatData() {
         addLastMessagesAndUnread(finishedChats)
     ])
 
+    // Filter out awaiting chats that have no messages (e.g. just imported)
+    // We strictly filter "Awaiting" (Fila) because that's where the issue is.
+    // "My Chats" usually have messages or were explicitly assigned.
+    const filteredAwaitingChats = awaitingChatsWithMsg?.filter(c => c.last_message !== null) || []
+
     return {
         myChats: myChatsWithMsg,
-        awaitingChats: awaitingChatsWithMsg,
+        awaitingChats: filteredAwaitingChats,
         allChats: allChatsWithMsg,
         finishedChats: finishedChatsWithMsg,
         currentUserId: user.id,
