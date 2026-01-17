@@ -3,39 +3,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-// Helper to fetch all deals with pagination (bypasses 1000 limit)
-async function fetchAllDeals(supabase: any, pipelineId: string) {
-    const allDeals: any[] = []
-    const pageSize = 1000
-    let page = 0
-    let hasMore = true
+const DEALS_PER_PAGE = 20
 
-    while (hasMore) {
-        const { data: deals, error } = await supabase
-            .from('deals')
-            .select('*, contacts(name, phone)')
-            .eq('pipeline_id', pipelineId)
-            .order('created_at', { ascending: false })
-            .range(page * pageSize, (page + 1) * pageSize - 1)
+// New action to fetch more deals for a specific stage
+export async function getMoreDeals(stageId: string, page: number) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
 
-        if (error) {
-            console.error('Error fetching deals:', error)
-            break
-        }
+    const offset = (page - 1) * DEALS_PER_PAGE
 
-        if (deals && deals.length > 0) {
-            allDeals.push(...deals)
-            hasMore = deals.length === pageSize
-            page++
-        } else {
-            hasMore = false
-        }
+    const { data: deals, error } = await supabase
+        .from('deals')
+        .select('*, contacts(name, phone)')
+        .eq('stage_id', stageId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + DEALS_PER_PAGE - 1)
+
+    if (error) {
+        console.error('Error fetching more deals:', error)
+        return { deals: [], hasMore: false }
     }
 
-    return allDeals
+    return {
+        deals: deals || [],
+        hasMore: (deals?.length || 0) === DEALS_PER_PAGE
+    }
 }
 
-// Modified getKanbanData to accept optional pipelineId
+// Initial Kanban load - fetches stages and first page of deals for each stage
 export async function getKanbanData(selectedPipelineId?: string) {
     const supabase = await createClient()
 
@@ -81,7 +77,7 @@ export async function getKanbanData(selectedPipelineId?: string) {
         pipeline = newPipeline
     }
 
-    // Fetch stages (without deals - we'll fetch those separately)
+    // Fetch stages (without deals)
     const { data: stages, error: stagesError } = await supabase
         .from('stages')
         .select('*')
@@ -92,22 +88,28 @@ export async function getKanbanData(selectedPipelineId?: string) {
         console.error('Error fetching stages:', stagesError)
     }
 
-    // Fetch ALL deals for this pipeline (bypasses 1000 limit)
-    const allDeals = await fetchAllDeals(supabase, pipeline.id)
+    // Fetch first page of deals for EACH stage and total counts
+    const processedStages = await Promise.all((stages || []).map(async (stage) => {
+        // Fetch first page of deals
+        const { data: deals } = await supabase
+            .from('deals')
+            .select('*, contacts(name, phone)')
+            .eq('stage_id', stage.id)
+            .order('created_at', { ascending: false })
+            .limit(DEALS_PER_PAGE)
 
-    // Group deals by stage_id
-    const dealsByStage = new Map<string, any[]>()
-    for (const deal of allDeals) {
-        if (!dealsByStage.has(deal.stage_id)) {
-            dealsByStage.set(deal.stage_id, [])
+        // Get total count (for the header badge)
+        const { count } = await supabase
+            .from('deals')
+            .select('*', { count: 'exact', head: true })
+            .eq('stage_id', stage.id)
+
+        return {
+            ...stage,
+            deals: deals || [],
+            totalDeals: count || 0,
+            hasMore: (deals?.length || 0) === DEALS_PER_PAGE
         }
-        dealsByStage.get(deal.stage_id)!.push(deal)
-    }
-
-    // Combine stages with their deals
-    const processedStages = stages?.map(stage => ({
-        ...stage,
-        deals: dealsByStage.get(stage.id) || []
     }))
 
     return { stages: processedStages, pipeline, pipelines }

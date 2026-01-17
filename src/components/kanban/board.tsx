@@ -5,17 +5,18 @@ import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useSensor, useSe
 import { arrayMove, SortableContext } from '@dnd-kit/sortable'
 import { Column } from './column'
 import { DealCard } from './deal-card'
-import { moveDeal } from '@/app/dashboard/kanban/actions'
+import { moveDeal, getMoreDeals } from '@/app/dashboard/kanban/actions'
 
 interface KanbanBoardProps {
     initialStages: any[]
 }
 
 export function KanbanBoard({ initialStages }: KanbanBoardProps) {
-    const [stages, setStages] = useState(initialStages || [])
+    // Initialize stages with a default page property if valid, or empty array
+    const [stages, setStages] = useState((initialStages || []).map(s => ({ ...s, page: 1 })))
 
     useEffect(() => {
-        setStages(initialStages || [])
+        setStages((initialStages || []).map(s => ({ ...s, page: 1 })))
     }, [initialStages])
 
     const [activeDeal, setActiveDeal] = useState<any>(null)
@@ -50,11 +51,11 @@ export function KanbanBoard({ initialStages }: KanbanBoardProps) {
         if (sourceStage.id !== destStage.id) {
             const newStages = stages.map(stage => {
                 if (stage.id === sourceStage.id) {
-                    return { ...stage, deals: stage.deals.filter((d: any) => d.id !== activeDealId) }
+                    return { ...stage, deals: stage.deals.filter((d: any) => d.id !== activeDealId), totalDeals: (stage.totalDeals || 0) - 1 }
                 }
                 if (stage.id === destStage.id) {
                     const movedDeal = { ...activeDeal, stage_id: destStage.id }
-                    return { ...stage, deals: [...stage.deals, movedDeal] }
+                    return { ...stage, deals: [movedDeal, ...stage.deals], totalDeals: (stage.totalDeals || 0) + 1 }
                 }
                 return stage
             })
@@ -65,11 +66,31 @@ export function KanbanBoard({ initialStages }: KanbanBoardProps) {
         }
     }
 
+    const handleLoadMore = async (stageId: string) => {
+        const stage = stages.find(s => s.id === stageId)
+        if (!stage) return
+
+        const nextPage = (stage.page || 1) + 1
+        const result = await getMoreDeals(stageId, nextPage)
+
+        setStages(prev => prev.map(s => {
+            if (s.id === stageId) {
+                return {
+                    ...s,
+                    deals: [...s.deals, ...result.deals],
+                    hasMore: result.hasMore,
+                    page: nextPage
+                }
+            }
+            return s
+        }))
+    }
+
     return (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex h-full gap-6 overflow-x-auto pb-4">
                 {stages.map(stage => (
-                    <Column key={stage.id} stage={stage} />
+                    <Column key={stage.id} stage={stage} onLoadMore={handleLoadMore} />
                 ))}
             </div>
 

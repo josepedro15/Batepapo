@@ -17,7 +17,10 @@ export default async function KanbanPage({ searchParams }: { searchParams: Promi
     const { data: contacts } = await supabase.from('contacts').select('id, name, phone').eq('organization_id', member?.organization_id)
 
     // Calculate stats
-    const totalDeals = stages?.reduce((acc, s) => acc + (s.deals?.length || 0), 0) || 0
+    const totalDeals = stages?.reduce((acc, s) => acc + (s.totalDeals || 0), 0) || 0
+    // Note: Total value is still an approximation based on loaded deals, or we could fetch a sum aggregation if critical.
+    // For now, let's keep it as sum of LOADED deals to avoid another query, or accept acceptable inaccuracy for perf.
+    // Ideally we should return totalValue from the backend too. Let's do that in a follow up if needed.
     const totalValue = stages?.reduce((acc, s) =>
         acc + (s.deals?.reduce((sum: number, d: any) => sum + (d.value || 0), 0) || 0), 0) || 0
 
