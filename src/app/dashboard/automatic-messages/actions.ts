@@ -61,7 +61,7 @@ export async function deleteAutomaticMessageRule(id: string) {
 }
 
 export async function toggleAutomaticMessageRule(id: string, is_active: boolean) {
-    const supabase = createClient()
+    const supabase = await createClient()
     const { error } = await supabase
         .from('automatic_message_rules')
         .update({ is_active })
