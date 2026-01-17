@@ -1,5 +1,7 @@
 'use server'
 
+import OpenAI from 'openai'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -69,4 +71,47 @@ export async function toggleAutomaticMessageRule(id: string, is_active: boolean)
 
     if (error) throw error
     revalidatePath('/dashboard/automatic-messages')
+}
+
+export async function generateAIResponse(params: {
+    startTime: string,
+    endTime: string,
+    tips: string
+}) {
+    try {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OpenAI API Key not configured')
+        }
+
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        })
+
+        const systemPrompt = `Você é um assistente especializado em criar mensagens automáticas para WhatsApp.
+        
+Contexto da Regra (Horário): ${params.startTime} às ${params.endTime}
+Instruções/Dicas do Usuário: ${params.tips}
+
+Diretrizes:
+- Crie uma mensagem curta e cordial.
+- Se a loja estiver fechada ou em pausa, sugira verificar as redes sociais.
+- Se for horário comercial, convide para o atendimento.
+- Use emojis apropriados.
+- Retorne apenas o texto da mensagem.`
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: 'Gere a mensagem.' } // Trigger generic user message to start generation
+            ],
+            temperature: 0.7,
+            max_tokens: 300,
+        })
+
+        return response.choices[0].message.content
+    } catch (error) {
+        console.error('Error generating AI response:', error)
+        throw new Error('Falha ao gerar mensagem com IA')
+    }
 }

@@ -7,9 +7,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
-import { createAutomaticMessageRule, updateAutomaticMessageRule } from '@/app/dashboard/automatic-messages/actions'
+import { createAutomaticMessageRule, updateAutomaticMessageRule, generateAIResponse } from '@/app/dashboard/automatic-messages/actions'
 import { toast } from 'sonner'
-import { Plus, Pencil } from 'lucide-react'
+import { Plus, Pencil, Sparkles, Wand2 } from 'lucide-react'
 
 interface Rule {
     id: string
@@ -37,6 +37,35 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
         end_time: rule?.end_time || '18:00',
         is_active: rule?.is_active ?? true
     })
+
+    const [aiTips, setAiTips] = useState('')
+    const [generating, setGenerating] = useState(false)
+
+    const handleGenerateAI = async () => {
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            // Just a check to ensure we are in a valid env context, though not strictly needed for this.
+            // simpler:
+        }
+
+        setGenerating(true)
+        try {
+            const response = await generateAIResponse({
+                startTime: formData.start_time,
+                endTime: formData.end_time,
+                tips: aiTips
+            })
+
+            if (response) {
+                setFormData(prev => ({ ...prev, message: response }))
+                toast.success('Mensagem gerada com sucesso!')
+            }
+        } catch (error) {
+            toast.error('Erro ao gerar mensagem. Verifique a chave da API.')
+            console.error(error)
+        } finally {
+            setGenerating(false)
+        }
+    }
 
     // Ensure time format is HH:MM
     const formatTime = (timeString: string) => {
@@ -98,7 +127,7 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
                         <Input
                             id="name"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
                             placeholder="Ex: Mensagem Fora do Horário"
                             required
                         />
@@ -111,7 +140,7 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
                                 id="start_time"
                                 type="time"
                                 value={formatTime(formData.start_time)}
-                                onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, start_time: e.target.value })}
                                 required
                             />
                         </div>
@@ -121,10 +150,43 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
                                 id="end_time"
                                 type="time"
                                 value={formatTime(formData.end_time)}
-                                onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, end_time: e.target.value })}
                                 required
                             />
                         </div>
+                    </div>
+
+                    <div className="space-y-4 border rounded-lg p-4 bg-muted/50">
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-purple-500" />
+                                <Label htmlFor="ai_tips" className="text-purple-700 font-medium">Gerador de Mensagem com IA</Label>
+                            </div>
+                            <Textarea
+                                id="ai_tips"
+                                value={aiTips}
+                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiTips(e.target.value)}
+                                placeholder="Dê dicas para a IA: ' horário de almoço', 'loja fechada', 'conferir instagram'..."
+                                rows={2}
+                                className="resize-none"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            onClick={handleGenerateAI}
+                            disabled={generating || !aiTips}
+                            variant="secondary"
+                            className="w-full gap-2"
+                        >
+                            {generating ? (
+                                <>Gerenando...</>
+                            ) : (
+                                <>
+                                    <Wand2 className="w-4 h-4" />
+                                    Gerar Mensagem Automática
+                                </>
+                            )}
+                        </Button>
                     </div>
 
                     <div className="space-y-2">
@@ -132,8 +194,8 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
                         <Textarea
                             id="message"
                             value={formData.message}
-                            onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                            placeholder="Digite a mensagem que será enviada..."
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, message: e.target.value })}
+                            placeholder="Digite a mensagem ou gere com a IA..."
                             rows={4}
                             required
                         />
@@ -143,7 +205,7 @@ export function AutomaticMessageForm({ organizationId, rule, trigger }: Automati
                         <Switch
                             id="is_active"
                             checked={formData.is_active}
-                            onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                            onCheckedChange={(checked: boolean) => setFormData({ ...formData, is_active: checked })}
                         />
                         <Label htmlFor="is_active">Regra Ativa</Label>
                     </div>
