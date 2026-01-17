@@ -33,17 +33,24 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
     const [hasMore, setHasMore] = useState(true)
     const { ref, inView } = useInView()
     const contactsRef = useRef<WhatsAppContact[]>([]) // Ref to access current contacts in async function
+    const isLoadingContactsRef = useRef(false)
+    const hasMoreRef = useRef(true)
 
-    // Keep ref in sync with state
+    // Keep refs in sync with state
     useEffect(() => {
         contactsRef.current = contacts
     }, [contacts])
 
+    useEffect(() => {
+        hasMoreRef.current = hasMore
+    }, [hasMore])
+
     const fetchContacts = useCallback(async (pageNum: number, searchTerm: string, reset: boolean = false) => {
         // Prevent duplicate requests for the same page/search combo
-        if (!reset && (isLoadingContacts || !hasMore)) return
+        if (!reset && (isLoadingContactsRef.current || !hasMoreRef.current)) return
 
         try {
+            isLoadingContactsRef.current = true
             setIsLoadingContacts(true)
 
             // Calculate query params
@@ -64,7 +71,9 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             if (response.ok) {
                 if (reset) {
                     setContacts(data.contacts)
-                    setHasMore(data.contacts.length >= 20)
+                    const hasMoreData = data.contacts.length >= 20
+                    setHasMore(hasMoreData)
+                    hasMoreRef.current = hasMoreData
                 } else {
                     setContacts(prev => {
                         // Create a map of existing IDs for faster lookup
@@ -75,7 +84,9 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                     })
 
                     // Only stop if we got fewer results than requested
-                    setHasMore(data.contacts.length >= 20)
+                    const hasMoreData = data.contacts.length >= 20
+                    setHasMore(hasMoreData)
+                    hasMoreRef.current = hasMoreData
                 }
             } else {
                 const errorData = await response.json().catch(() => ({}))
@@ -88,14 +99,17 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
                     }
                 }
                 setHasMore(false)
+                hasMoreRef.current = false
             }
         } catch (error) {
             console.error('Error fetching contacts:', error)
             setHasMore(false)
+            hasMoreRef.current = false
         } finally {
             setIsLoadingContacts(false)
+            isLoadingContactsRef.current = false
         }
-    }, [orgId, hasMore, isLoadingContacts])
+    }, [orgId])
 
     // Debounced search
     const debouncedSearch = useCallback(
@@ -115,6 +129,8 @@ export function NewChatDialog({ open, onClose, onChatCreated, orgId }: NewChatDi
             setPhone('')
             setContacts([])
             setHasMore(true)
+            hasMoreRef.current = true
+            isLoadingContactsRef.current = false
             // Initial fetch
             fetchContacts(1, '', true)
         }
